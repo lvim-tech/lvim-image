@@ -91,13 +91,6 @@ require("lvim-image").setup({
         debounce = 150, -- ms after an edit before placements are reconciled
         open_key = "<CR>", -- buffer-local key (while inline is on) to open the viewer for the image under the cursor
     },
-    -- Single-width Nerd-font glyphs used as inline anchors / decode-error marker.
-    icons = {
-        image = "",
-        math = "󰪚",
-        chart = "󰄧",
-        error = "",
-    },
     debug = {
         request = false, -- log every graphics escape written
         decode = false, -- log the decode path taken (passthrough / libvips / fallback)

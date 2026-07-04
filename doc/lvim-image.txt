@@ -75,6 +75,6 @@ Merges {opts} into the live config in place (a shorter override list REPLACES th
 default wholesale). Optional. See the README for the FULL default config; the
 option set is documented as `lvim-image.Config` in `lua/lvim-image/config.lua`
 (enabled, force, backend, formats, max_width/height, border, detail colours,
-decode, inline, icons, debug).
+decode, inline, debug).
 
 vim:tw=78:ts=8:ft=help:norl:
