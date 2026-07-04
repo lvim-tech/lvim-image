@@ -1,0 +1,80 @@
+*lvim-image.txt*                          Images inside Neovim, from the lvim-tech set
+
+==============================================================================
+CONTENTS                                                     *lvim-image-contents*
+
+    1. Introduction ......................... |lvim-image-introduction|
+    2. Requirements ......................... |lvim-image-requirements|
+    3. Installation ......................... |lvim-image-installation|
+    4. Usage ................................ |lvim-image-usage|
+    5. Configuration ........................ |lvim-image-configuration|
+
+==============================================================================
+1. INTRODUCTION                                          *lvim-image-introduction*
+
+lvim-image displays images inside Neovim across all terminal graphics protocols
+(kitty, iTerm2, sixel, ueberzugpp). Non-PNG sources (JPEG / GIF / WEBP / TIFF /
+SVG / PDF / …) are decoded to pixels IN MEMORY via libvips — no ImageMagick and
+no PNG copies written to disk. It ships:
+
+- a standalone floating VIEWER (`:LvimImage`) — a titled surface with the image,
+  a toggleable details panel, and a footer bar;
+- INLINE document images (`:LvimImageInline`) — images drawn as virtual lines
+  under their source line in markdown / HTML / LaTeX (via shipped treesitter
+  queries), never editing the buffer text;
+- an `attach` entry point used by file-buffers and picker previews to render an
+  image into any window.
+
+==============================================================================
+2. REQUIREMENTS                                          *lvim-image-requirements*
+
+- Neovim >= 0.12.x
+- lvim-utils (base)
+- lvim-ui (the floating viewer builds on its surface toolkit)
+- a terminal with a graphics protocol (kitty / iTerm2 / sixel / ueberzugpp)
+- libvips for non-PNG formats (optionally gs / rsvg-convert for PDF / SVG)
+
+Run `:checkhealth lvim-image` to see the detected terminal + capabilities.
+
+==============================================================================
+3. INSTALLATION                                          *lvim-image-installation*
+
+lvim-installer (recommended): >vim
+    :LvimInstaller plugins
+<
+Native (vim.pack): >lua
+    vim.pack.add({
+        { src = "https://github.com/lvim-tech/lvim-utils" },
+        { src = "https://github.com/lvim-tech/lvim-ui" },
+        { src = "https://github.com/lvim-tech/lvim-image" },
+    })
+    require("lvim-image").setup({})
+<
+==============================================================================
+4. USAGE                                                        *lvim-image-usage*
+
+setup() runs terminal detection and registers the commands (the API also works
+without an explicit setup() — it self-initialises on first use). >vim
+    :LvimImage [path]                 " open the floating viewer (default: current file)
+    :LvimImageInline [on|off|toggle]  " toggle inline document images in the buffer
+<
+Lua API: >lua
+    local image = require("lvim-image")
+    image.show("/path/to/pic.png")     -- open the float viewer
+    image.is_image(path)               -- boolean: a displayable image (by extension)
+    image.attach(buf, win, src, opts)  -- render into an existing buffer + window
+    image.info()                       -- the detected terminal + capabilities
+<
+==============================================================================
+5. CONFIGURATION                                        *lvim-image-configuration*
+
+                                                             *lvim-image.setup()*
+require("lvim-image").setup({opts})
+
+Merges {opts} into the live config in place (a shorter override list REPLACES the
+default wholesale). Optional. See the README for the FULL default config; the
+option set is documented as `lvim-image.Config` in `lua/lvim-image/config.lua`
+(enabled, force, backend, formats, max_width/height, border, detail colours,
+decode, inline, icons, debug).
+
+vim:tw=78:ts=8:ft=help:norl:
