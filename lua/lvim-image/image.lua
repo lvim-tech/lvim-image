@@ -69,7 +69,9 @@ function M.new(src)
         return nil
     end
     local self = setmetatable({
-        src = vim.fn.fnamemodify(src, ":p"),
+        -- `vim.fs.normalize` first so a leading `~` / `$VAR` is expanded (fnamemodify ":p" does NOT expand a
+        -- tilde — a `:LvimImage ~/pic.png` would otherwise resolve against the cwd and fail "not readable").
+        src = vim.fn.fnamemodify(vim.fs.normalize(src), ":p"),
         protocol = proto,
         id = be.next_id and be.next_id() or 0,
         sent = false,
@@ -136,6 +138,53 @@ function Image:cells(max_w, max_h)
     local nat_cols = self.w / math.max(1, cell.w)
     local nat_rows = self.h / math.max(1, cell.h)
     return util.fit(nat_cols, nat_rows, max_w, max_h)
+end
+
+--- Whether this image's backend supports the unicode-PLACEHOLDER placement (only kitty). The renderer uses
+--- this together with the terminal's placeholder capability to pick the placeholder grid vs the cursor
+--- fallback — so a kitty terminal pinned to `backend = "iterm2"` correctly takes the fallback path.
+---@return boolean
+function Image:can_placeholder()
+    local be = backend(self.protocol)
+    return be ~= nil and be.show_virtual ~= nil
+end
+
+--- Cursor-positioned placement through the active backend (the non-placeholder path): draw this image at a
+--- 1-based screen cell, sized `cols × rows`. Re-issued by the caller on relayout / scroll.
+---@param row integer
+---@param col integer
+---@param cols integer
+---@param rows integer
+---@param pid integer
+function Image:place_at(row, col, cols, rows, pid)
+    local be = backend(self.protocol)
+    if be and be.place_at then
+        be.place_at(self, row, col, cols, rows, pid)
+    end
+end
+
+--- Transmit + create a virtual (unicode-placeholder) placement in ONE op — kitty only. Backends without
+--- placeholders leave this nil and the renderer uses `place_at` instead. `z` is an optional kitty z-index
+--- (>0 = above the text layer, so the image sits over a dimming backdrop veil).
+---@param cols integer
+---@param rows integer
+---@param z? integer
+function Image:show_virtual(cols, rows, z)
+    local be = backend(self.protocol)
+    if be and be.show_virtual then
+        be.show_virtual(self, cols, rows, z)
+    end
+end
+
+--- Re-place an already-transmitted image's virtual placement (kitty only; second window). No-op otherwise.
+---@param cols integer
+---@param rows integer
+---@param pid integer
+function Image:place_virtual(cols, rows, pid)
+    local be = backend(self.protocol)
+    if be and be.place_virtual then
+        be.place_virtual(self, cols, rows, pid)
+    end
 end
 
 --- Delete this image (and all its placements) from the terminal.

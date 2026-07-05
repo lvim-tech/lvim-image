@@ -149,8 +149,13 @@ end
 ---@param img { id: integer, kind: string, path?: string, bytes?: string, rgba?: string, w: integer, h: integer }
 ---@param cols integer
 ---@param rows integer
-function M.show_virtual(img, cols, rows)
+---@param z? integer  kitty z-index for the placement (>0 draws ABOVE the text layer — used so the image sits
+---                   OVER a dimming backdrop veil behind a float; nil = default 0)
+function M.show_virtual(img, cols, rows, z)
     local place = { a = "T", U = 1, i = img.id, c = cols, r = rows }
+    if z then
+        place.z = z
+    end
     if img.kind == "png_file" and img.path then
         place.f, place.t = 100, "f"
         cmd(place, b64(img.path))
@@ -173,11 +178,14 @@ end
 
 -- ── delete ──────────────────────────────────────────────────────────────────
 
---- Delete an image (all its placements) or a single placement of it from the terminal.
+--- Delete an image (all its placements) or a single placement of it from the terminal. `id == math.huge`
+--- deletes ALL images (`d=A`) — the vim.ui.img "delete everything" contract.
 ---@param id integer
 ---@param placement_id? integer
 function M.delete(id, placement_id)
-    if placement_id then
+    if id == math.huge then
+        cmd({ a = "d", d = "A" })
+    elseif placement_id then
         cmd({ a = "d", d = "i", i = id, p = placement_id })
     else
         cmd({ a = "d", d = "i", i = id })

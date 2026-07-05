@@ -13,9 +13,15 @@
 
 local api = vim.api
 local terminal = require("lvim-image.terminal")
-local kitty = require("lvim-image.protocols.kitty")
 
 local M = {}
+
+-- Our `LvimImage_<id>` groups encode the kitty image id in their FOREGROUND. Tell the shared dim namespace to
+-- leave them UNMUTED — else a dimmed window (a surface's "dim" backdrop, or dim_inactive) mangles the id in the
+-- fg and the terminal can no longer match the image, so it vanishes. pcall: older lvim-utils has no dim module.
+pcall(function()
+    require("lvim-utils.dim").preserve("^LvimImage_")
+end)
 
 -- Kitty row/column diacritics (gen/rowcolumn-diacritics.txt). Index i (1-based) encodes position i-1.
 ---@type integer[]
@@ -101,7 +107,10 @@ function M.new(img, opts)
         rows = rows,
         pid = pid_seq,
         center = opts.center or false,
-        mode = caps.placeholders and "placeholder" or "fallback",
+        zindex = opts.zindex, -- kitty z-index (>0 = above a backdrop veil); nil = default
+        -- Placeholder grid needs BOTH a placeholder-capable terminal AND a placeholder-capable backend (kitty);
+        -- every other protocol (iterm2 / sixel / ueberzug) takes the cursor-positioned fallback.
+        mode = (caps.placeholders and img:can_placeholder()) and "placeholder" or "fallback",
     }, Placement)
 
     if self.mode == "placeholder" then
@@ -117,7 +126,7 @@ end
 --- the two-step transmit+place does NOT render), then fill the buffer with the placeholder grid and colour
 --- every cell with `fg = image id` so the terminal knows which image these cells belong to.
 function Placement:render_placeholder()
-    kitty.show_virtual(self.img, self.cols, self.rows)
+    self.img:show_virtual(self.cols, self.rows, self.zindex)
     self.img.sent = true
 
     -- When centring (the full-window image-file viewer), pad the grid with blank rows above and a run of
@@ -166,7 +175,7 @@ function Placement:render_fallback()
         return
     end
     local pos = api.nvim_win_get_position(self.win) -- {row, col}, 0-based, editor-relative
-    kitty.place_at(self.img, pos[1] + 1, pos[2] + 1, self.cols, self.rows, self.pid)
+    self.img:place_at(pos[1] + 1, pos[2] + 1, self.cols, self.rows, self.pid)
 end
 
 --- Re-issue the fallback placement (no-op in placeholder mode, which tracks itself).
@@ -205,9 +214,16 @@ function M.inline(img, opts)
     if not (img.w and img.h and img.w > 0 and img.h > 0) then
         return nil
     end
+    -- Inline document images ride the unicode-PLACEHOLDER grid (virt_lines cells the terminal repaints as the
+    -- buffer scrolls). Backends without placeholders (iterm2 / sixel / ueberzug) cannot anchor an image to
+    -- scrolling buffer cells, so inline is a clean no-op for them — the float VIEWER still works. Returning nil
+    -- here (rather than rendering the grid) avoids leaving raw placeholder glyphs in the document.
+    if not img:can_placeholder() then
+        return nil
+    end
     local cols, rows = img:cells(opts.max_w, opts.max_h)
     if not img.sent then
-        kitty.show_virtual(img, cols, rows)
+        img:show_virtual(cols, rows)
         img.sent = true
     end
 

@@ -17,6 +17,37 @@ Requires **Neovim >= 0.12.x**, [lvim-utils](https://github.com/lvim-tech/lvim-ut
 with a graphics protocol (kitty / iTerm2 / sixel / ueberzugpp). For non-PNG formats, **libvips** (optionally
 `gs` / `rsvg-convert` for PDF / SVG). Run `:checkhealth lvim-image` to see what is detected.
 
+## Protocol support
+
+The protocol is auto-detected (override with `backend`). What each one can do differs by the terminal model:
+
+| Protocol   | Terminals                                         | Viewer / attach | Inline images | Extra tool  |
+| ---------- | ------------------------------------------------- | --------------- | ------------- | ----------- |
+| `kitty`    | kitty, ghostty, WezTerm                           | yes             | yes           | —           |
+| `ueberzug` | any X11/Wayland session                           | yes             | no            | `ueberzugpp`|
+| `iterm2`   | iTerm2, WezTerm, Konsole                          | yes (static)    | no            | —           |
+| `sixel`    | foot, contour, mlterm, xterm +sixel, WezTerm, …   | yes (static)    | no            | `img2sixel` |
+
+- **kitty** uses unicode placeholders — the image is tied to buffer cells the terminal repaints as they scroll,
+  so both the viewer AND inline document images track perfectly. Best experience.
+- **ueberzug** draws in a separate overlay window layered over the terminal (a `ueberzugpp` daemon), so it
+  survives redraws and is repositioned on relayout. The universal fallback where kitty is unavailable.
+- **iterm2 / sixel** draw straight into the terminal grid at the cursor, so a static float viewer shows the
+  image but a repaint of that region clears it — great for the viewer, not for scrolling **inline** images.
+  Sixel needs `img2sixel` (libsixel) on `PATH`.
+
+Inline document images therefore require **kitty**; on the other protocols `:LvimImageInline` is a no-op while
+the `:LvimImage` viewer still works. `:checkhealth lvim-image` reports the active protocol and any missing tool.
+
+## Neovim `vim.ui.img` integration
+
+Neovim ships an experimental native image API, `vim.ui.img`. Its built-in backend writes via `nvim_ui_send`
+with no tmux passthrough, so `:checkhealth img` reports *not supported* inside tmux and images don't display
+there. Set `provide_ui_img = true` and lvim-image registers itself as `vim.ui.img` — the native API (and any
+plugin built on it) then routes through lvim-image's tmux-aware `/dev/tty` backend and works under tmux. It is
+opt-in and additive: lvim-image's own `:LvimImage` / inline / `attach` work directly regardless. (Like the
+native backend it is screen-positional — for content-anchored images use the plugin's own inline path.)
+
 ## Installation
 
 ### lvim-installer (recommended)
@@ -66,6 +97,9 @@ require("lvim-image").setup({
     force = false,
     -- "auto" picks the best detected protocol (kitty > iterm2 > sixel > ueberzug). Pin one to override.
     backend = "auto",
+    -- Also register lvim-image as Neovim's native `vim.ui.img` (opt-in). The direct API is unaffected; when on,
+    -- the native image API (and plugins built on it) route through lvim-image's tmux-aware /dev/tty backend.
+    provide_ui_img = false,
     -- Source formats to try. PNG is passed through untouched; the rest are decoded to pixels IN MEMORY by libvips.
     formats = { "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif", "heic", "avif", "svg", "pdf" },
     -- Max VIEWER size: a fraction of the editor (<=1) or an absolute cell count (>1). Aspect preserved; the

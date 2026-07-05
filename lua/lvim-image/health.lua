@@ -68,11 +68,31 @@ function M.check()
         h.ok("kitty unicode placeholders: supported (inline-anchored images)")
     end
 
-    local proto = require("lvim-image.terminal").pick_protocol(image.config.force)
+    local cfg_backend = image.config.backend
+    local proto = cfg_backend ~= "auto" and cfg_backend
+        or require("lvim-image.terminal").pick_protocol(image.config.force)
     if proto then
-        h.ok("active protocol: " .. proto)
+        h.ok("active protocol: " .. proto .. (cfg_backend ~= "auto" and " (pinned in config)" or " (auto-detected)"))
     else
-        h.error("no graphics protocol detected — set `force = true` to assume kitty")
+        h.error("no graphics protocol detected — set `force = true` to assume kitty, or pin `backend`")
+    end
+
+    -- External tools the non-kitty backends need beyond the terminal itself: sixel encodes through libsixel's
+    -- `img2sixel`; the ueberzug fallback drives the `ueberzugpp` overlay daemon. Error only when the ACTIVE
+    -- protocol needs a tool that is missing; otherwise just note it (kitty/iTerm2 need neither).
+    if vim.fn.executable("img2sixel") == 1 then
+        h.ok("img2sixel (libsixel): present (sixel encoding)")
+    elseif proto == "sixel" then
+        h.error("img2sixel (libsixel) NOT found — the active sixel protocol cannot encode images; install libsixel")
+    else
+        h.info("img2sixel (libsixel): missing (needed only for the sixel protocol)")
+    end
+    if vim.fn.executable("ueberzugpp") == 1 or vim.fn.executable("ueberzug") == 1 then
+        h.ok("ueberzugpp: present (overlay fallback)")
+    elseif proto == "ueberzug" then
+        h.error("ueberzugpp NOT found — the active ueberzug protocol cannot draw; install ueberzugpp")
+    else
+        h.info("ueberzugpp: missing (needed only for the ueberzug overlay fallback)")
     end
 
     local ok, decode = pcall(require, "lvim-image.decode")

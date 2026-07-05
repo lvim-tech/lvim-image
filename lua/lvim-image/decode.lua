@@ -49,6 +49,7 @@ local function ensure()
         int   vips_addalpha(VipsImage* in, VipsImage** out, ...);
         int   vips_cast(VipsImage* in, VipsImage** out, int format, ...);
         void* vips_image_write_to_memory(VipsImage* in, size_t* size_out);
+        int   vips_pngsave_buffer(VipsImage* in, void** buf, size_t* len, ...);
         int   vips_image_get_width(VipsImage* image);
         int   vips_image_get_height(VipsImage* image);
         int   vips_image_get_bands(VipsImage* image);
@@ -152,6 +153,32 @@ function M.to_rgba(path)
     v.g_free(buf)
     v.g_object_unref(cur)
     return { rgba = rgba, w = w, h = h }
+end
+
+--- Encode any libvips-readable source (JPEG/GIF/WEBP/TIFF/SVG/PDF/…) to PNG bytes IN MEMORY (no temp file).
+--- Used by the escape protocols that need an ENCODED image rather than raw RGBA: iTerm2 (OSC 1337 wants a
+--- complete image file) and sixel (fed to `img2sixel`). PNG sources should be read from disk directly instead.
+---@param path string
+---@return string? png, string? err
+function M.to_png(path)
+    if not ensure() then
+        return nil, "libvips unavailable"
+    end
+    local v = assert(vips)
+    local img = v.vips_image_new_from_file(path, nil)
+    if img == nil then
+        return nil, "load failed: " .. last_error()
+    end
+    local buf = ffi.new("void*[1]")
+    local len = ffi.new("size_t[1]")
+    local rc = v.vips_pngsave_buffer(img, buf, len, nil)
+    v.g_object_unref(img)
+    if rc ~= 0 or buf[0] == nil then
+        return nil, "pngsave failed: " .. last_error()
+    end
+    local png = ffi.string(buf[0], len[0])
+    v.g_free(buf[0])
+    return png
 end
 
 return M

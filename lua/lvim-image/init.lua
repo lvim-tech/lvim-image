@@ -53,6 +53,10 @@ function M.setup(opts)
             end,
             desc = "Toggle inline image rendering in the current document",
         })
+        -- Optionally become the `vim.ui.img` backend (opt-in). The direct API above is unaffected.
+        if config.provide_ui_img then
+            require("lvim-image.uiimg").register()
+        end
     end
 end
 

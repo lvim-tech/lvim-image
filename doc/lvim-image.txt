@@ -36,6 +36,20 @@ no PNG copies written to disk. It ships:
 
 Run `:checkhealth lvim-image` to see the detected terminal + capabilities.
 
+Protocol support (auto-detected; override with `backend`):
+
+  kitty     kitty / ghostty / WezTerm        viewer + INLINE (placeholders)
+  ueberzug  any X11/Wayland + ueberzugpp     viewer (overlay; survives redraws)
+  iterm2    iTerm2 / WezTerm / Konsole       viewer only (drawn into the grid)
+  sixel     foot / contour / mlterm / …      viewer only; needs img2sixel
+
+Inline document images use kitty's unicode placeholders (cells the terminal
+repaints as they scroll), so they require kitty; on the other protocols
+`:LvimImageInline` is a no-op while the `:LvimImage` viewer still works.
+iterm2/sixel draw at the cursor into the grid, so a repaint clears them —
+fine for the static viewer, not for scrolling. sixel needs `img2sixel`
+(libsixel) and ueberzug needs the `ueberzugpp` binary on PATH.
+
 ==============================================================================
 3. INSTALLATION                                          *lvim-image-installation*
 
