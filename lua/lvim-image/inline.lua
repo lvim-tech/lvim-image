@@ -22,6 +22,7 @@ local M = {}
 ---@field aug integer                                            per-buffer autocmd group
 ---@field enabled boolean
 ---@field gen integer                                            debounce generation counter
+---@field pending_hard boolean|nil                               a hard (re-transmit) reconcile is queued on the debounce
 ---@field key string|nil                                         the mapped open-key (to delete on disable)
 ---@field images table<string, { img: lvim-image.Image, pid: integer }>  cached prepared images by src
 ---@field placements table<string, lvim-image.InlinePlacement>           active placements by "row\0src"
@@ -155,18 +156,27 @@ local function reconcile(buf, hard)
 end
 
 --- Debounce a reconcile of `buf` (coalesces a burst of edits into one rebuild after `config.inline.debounce`).
+--- `hard` marks the queued reconcile as a full re-transmit (used by resize): the flag STICKS until the timer
+--- fires, so a burst of VimResized events — each a full re-decode + re-transmit if run eagerly — collapses into
+--- ONE hard rebuild at the settled geometry, and a soft edit landing in the same window keeps the hard flag.
 ---@param buf integer
-local function schedule(buf)
+---@param hard? boolean
+local function schedule(buf, hard)
     local st = bufs[buf]
     if not st then
         return
     end
     st.gen = st.gen + 1
+    if hard then
+        st.pending_hard = true
+    end
     local g = st.gen
     vim.defer_fn(function()
         local s = bufs[buf]
         if s and s.enabled and s.gen == g then
-            reconcile(buf)
+            local do_hard = s.pending_hard or false
+            s.pending_hard = nil
+            reconcile(buf, do_hard)
         end
     end, config.inline.debounce)
 end
@@ -218,7 +228,7 @@ function M.enable(buf)
         group = st.aug,
         callback = function()
             if bufs[buf] and bufs[buf].enabled then
-                reconcile(buf, true)
+                schedule(buf, true)
             end
         end,
     })

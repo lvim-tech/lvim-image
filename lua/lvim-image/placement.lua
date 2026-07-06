@@ -75,6 +75,7 @@ end
 ---@field rows integer
 ---@field pid integer            kitty placement id
 ---@field center boolean         pad the grid to centre the image in its window (file viewer) vs top-left (float)
+---@field zindex? integer        kitty z-index for the placement (>0 draws above a backdrop veil); nil = default
 ---@field mode "placeholder"|"fallback"
 local Placement = {}
 Placement.__index = Placement

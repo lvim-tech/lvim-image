@@ -104,10 +104,13 @@ function M.place_at(img, row, col, cols, rows, placement_id)
         end
         img._sixel[key] = data
     end
-    terminal.write("\27[s") -- save cursor
-    terminal.write(string.format("\27[%d;%dH", row, col)) -- move to the cell
+    -- Cursor positioning goes UNwrapped to the pane pty (write_raw): tmux translates the pane-relative CUP to
+    -- the outer screen itself. Wrapping it in the passthrough would send pane coords straight to the OUTER
+    -- terminal (wrong position in a split + a grid desync). Only the SIXEL payload rides the passthrough.
+    terminal.write_raw("\27[s") -- save cursor
+    terminal.write_raw(string.format("\27[%d;%dH", row, col)) -- move to the cell
     terminal.write(data)
-    terminal.write("\27[u") -- restore cursor
+    terminal.write_raw("\27[u") -- restore cursor
 end
 
 --- No persistent placement to remove (grid-drawn); a repaint of the cells clears the image.

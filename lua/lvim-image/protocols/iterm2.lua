@@ -87,10 +87,13 @@ function M.place_at(img, row, col, cols, rows, placement_id)
     end
     -- width/height are CELL counts; preserveAspectRatio=0 because the renderer already fit the box to aspect.
     local head = string.format("\27]1337;File=inline=1;width=%d;height=%d;preserveAspectRatio=0:", cols, rows)
-    terminal.write("\27[s") -- save cursor
-    terminal.write(string.format("\27[%d;%dH", row, col)) -- move to the cell
+    -- Cursor positioning goes UNwrapped to the pane pty (write_raw): tmux translates the pane-relative CUP to
+    -- the outer screen itself. Wrapping it in the passthrough would send pane coords straight to the OUTER
+    -- terminal (wrong position in a split + a grid desync). Only the IMAGE payload rides the passthrough.
+    terminal.write_raw("\27[s") -- save cursor
+    terminal.write_raw(string.format("\27[%d;%dH", row, col)) -- move to the cell
     terminal.write(head .. img._iterm .. "\27\\")
-    terminal.write("\27[u") -- restore cursor
+    terminal.write_raw("\27[u") -- restore cursor
 end
 
 --- No persistent placement to remove (the image is drawn into the grid); a repaint of those cells clears it.

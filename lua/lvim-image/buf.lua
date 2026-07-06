@@ -59,20 +59,12 @@ local function display(buf, win, src)
     })
 end
 
---- `BufReadCmd` handler: take over an opened image file, mark its buffer a throwaway image scratch, apply the
---- viewer window options, and render — re-fit on resize, cleaned up on wipe.
----@param ev { buf: integer, match: string, file: string }
-function M.open(ev)
-    local buf = ev.buf
-    local src = vim.fn.fnamemodify((ev.match ~= "" and ev.match) or ev.file or api.nvim_buf_get_name(buf), ":p")
-    local image = require("lvim-image")
-    image.setup()
-    if not config.enabled or not image.supported() then
-        default_read(buf, src)
-        return
-    end
-    local win = api.nvim_get_current_win()
-
+--- Turn `buf` (shown in `win`) into the image viewer for `src`: mark it a throwaway image scratch, apply the
+--- viewer window options (saving the prior ones), and render — re-fit on resize, restored + cleaned up on wipe.
+---@param buf integer
+---@param win integer
+---@param src string
+local function render_image(buf, win, src)
     local saved_winopts = {}
     for _, opt in ipairs({ "number", "relativenumber", "list", "wrap", "cursorline", "signcolumn" }) do
         pcall(function()
@@ -136,6 +128,45 @@ function M.open(ev)
                     pcall(function()
                         vim.wo[win][opt] = value
                     end)
+                end
+            end
+        end,
+    })
+end
+
+--- `BufReadCmd` handler: take over an opened image file. When a graphics protocol is available, render the
+--- image; otherwise perform the DEFAULT binary read (so the buffer holds the real bytes and `:w` round-trips
+--- instead of truncating an empty buffer). Terminal capability detection is ASYNC — its DA1/XTVERSION replies
+--- land on `TermResponse` after this handler runs — so on the not-yet-supported path we install a ONE-SHOT
+--- `TermResponse` re-check that switches the (still-untouched) buffer to the image view once support appears.
+---@param ev { buf: integer, match: string, file: string }
+function M.open(ev)
+    local buf = ev.buf
+    local src = vim.fn.fnamemodify((ev.match ~= "" and ev.match) or ev.file or api.nvim_buf_get_name(buf), ":p")
+    local image = require("lvim-image")
+    image.setup()
+    if not config.enabled then
+        default_read(buf, src)
+        return
+    end
+    if image.supported() then
+        render_image(buf, api.nvim_get_current_win(), src)
+        return
+    end
+    -- Not supported yet: read the file so the buffer is not left empty, then wait for the async capability
+    -- replies. If support resolves and the buffer is still an untouched image file, render it in place.
+    default_read(buf, src)
+    api.nvim_create_autocmd("TermResponse", {
+        group = api.nvim_create_augroup("LvimImageBufDetect_" .. buf, { clear = true }),
+        callback = function()
+            if not api.nvim_buf_is_valid(buf) then
+                return true -- returning true removes this autocmd
+            end
+            if image.supported() and not vim.bo[buf].modified then
+                local win = vim.fn.bufwinid(buf)
+                if win ~= -1 then
+                    render_image(buf, win, src)
+                    return true
                 end
             end
         end,
