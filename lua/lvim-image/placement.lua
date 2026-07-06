@@ -87,7 +87,7 @@ local pid_seq = 0
 ---   max_w   max width in cells  (defaults to the window width)
 ---   max_h   max height in cells (defaults to the window height)
 ---@param img lvim-image.Image
----@param opts { buf: integer, win: integer, max_w?: integer, max_h?: integer, center?: boolean }
+---@param opts { buf: integer, win: integer, max_w?: integer, max_h?: integer, center?: boolean, zindex?: integer }
 ---@return lvim-image.Placement|nil
 function M.new(img, opts)
     if not (img.w and img.h and img.w > 0 and img.h > 0) then
@@ -126,6 +126,9 @@ end
 --- the two-step transmit+place does NOT render), then fill the buffer with the placeholder grid and colour
 --- every cell with `fg = image id` so the terminal knows which image these cells belong to.
 function Placement:render_placeholder()
+    if not (api.nvim_buf_is_valid(self.buf) and api.nvim_win_is_valid(self.win)) then
+        return
+    end
     self.img:show_virtual(self.cols, self.rows, self.zindex)
     self.img.sent = true
 

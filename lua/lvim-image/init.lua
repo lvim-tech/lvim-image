@@ -85,6 +85,9 @@ end
 function M.attach(buf, win, src, opts)
     ensure()
     opts = opts or {}
+    if not (api.nvim_buf_is_valid(buf) and api.nvim_win_is_valid(win)) then
+        return nil
+    end
     if not (config.enabled and M.supported()) then
         return nil
     end
@@ -145,7 +148,7 @@ function M.details(src, img)
     if img.w and img.h and img.h > 0 then
         add("Aspect", string.format("%.3f : 1", img.w / img.h))
     end
-    local st = (vim.uv or vim.loop).fs_stat(src)
+    local st = vim.uv.fs_stat(src)
     if st then
         add("File size", human_size(st.size))
         add("Modified", os.date("%Y-%m-%d %H:%M", st.mtime.sec))

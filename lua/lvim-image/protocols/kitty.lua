@@ -25,12 +25,20 @@ local CHUNK = 4096 -- kitty caps a single transmit payload chunk at 4096 base64 
 local nvim_id =
     bit.band(bit.bxor(vim.fn.getpid(), bit.rshift(vim.fn.getpid(), 5), bit.rshift(vim.fn.getpid(), 10)), 0x3FF)
 local seq = 0
+local live = {}
 
 --- Allocate a fresh 24-bit kitty image id unique to this Neovim process.
 ---@return integer
 function M.next_id()
-    seq = seq + 1
-    return bit.bor(bit.lshift(nvim_id, 14), bit.band(seq, 0x3FFF))
+    local id
+    repeat
+        seq = bit.band(seq + 1, 0x3FFF)
+        if seq == 0 then
+            seq = 1
+        end
+        id = bit.bor(bit.lshift(nvim_id, 14), seq)
+    until not live[id]
+    return id
 end
 
 -- ── low-level command ───────────────────────────────────────────────────────
@@ -61,7 +69,8 @@ end
 ---@param id integer
 ---@param path string
 local function transmit_file(id, path)
-    cmd({ a = "t", t = "f", f = 100, i = id, data = b64(path) })
+    cmd({ a = "t", t = "f", f = 100, i = id }, b64(path))
+    live[id] = true
 end
 
 --- Transmit raw RGBA pixels (or arbitrary bytes) as chunked base64. `fmt` is 32 (RGBA) or 100 (PNG). For raw
@@ -91,6 +100,7 @@ local function transmit_data(id, bytes, fmt, w, h, extra)
                 keys[k] = v
             end
             cmd(keys, chunk)
+            live[id] = true
             first = false
         else
             cmd({ m = more }, chunk)
@@ -118,7 +128,7 @@ end
 ---@param row integer
 ---@param col integer
 local function set_cursor(row, col)
-    terminal.write(string.format("\27[%d;%dH", row, col))
+    terminal.write_raw(string.format("\27[%d;%dH", row, col))
 end
 
 --- CURSOR-POSITIONED placement (fallback for terminals without unicode placeholders, and for standalone
@@ -159,6 +169,7 @@ function M.show_virtual(img, cols, rows, z)
     if img.kind == "png_file" and img.path then
         place.f, place.t = 100, "f"
         cmd(place, b64(img.path))
+        live[img.id] = true
     elseif img.kind == "rgba" and img.rgba then
         transmit_data(img.id, img.rgba, 32, img.w, img.h, place)
     elseif img.kind == "png_bytes" and img.bytes then
@@ -178,18 +189,26 @@ end
 
 -- ── delete ──────────────────────────────────────────────────────────────────
 
---- Delete an image (all its placements) or a single placement of it from the terminal. `id == math.huge`
---- deletes ALL images (`d=A`) — the vim.ui.img "delete everything" contract.
+--- Delete an image (all its placements and data) or a single placement of it from the terminal.
 ---@param id integer
 ---@param placement_id? integer
 function M.delete(id, placement_id)
-    if id == math.huge then
-        cmd({ a = "d", d = "A" })
-    elseif placement_id then
+    if placement_id then
         cmd({ a = "d", d = "i", i = id, p = placement_id })
     else
-        cmd({ a = "d", d = "i", i = id })
+        cmd({ a = "d", d = "I", i = id })
+        live[id] = nil
     end
 end
+
+vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = vim.api.nvim_create_augroup("LvimImageKittyCleanup", { clear = true }),
+    callback = function()
+        for id in pairs(live) do
+            cmd({ a = "d", d = "I", i = id })
+        end
+        live = {}
+    end,
+})
 
 return M

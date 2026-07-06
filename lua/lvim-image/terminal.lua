@@ -11,7 +11,6 @@
 ---@module "lvim-image.terminal"
 
 local api = vim.api
-local uv = vim.uv or vim.loop
 
 local M = {}
 
@@ -87,6 +86,12 @@ function M.write(data)
     if state.transform then
         data = state.transform(data)
     end
+    M.write_raw(data)
+end
+
+--- Write raw bytes to the pane terminal without tmux graphics passthrough wrapping.
+---@param data string
+function M.write_raw(data)
     local fh = tty()
     if fh then
         fh:write(data)
@@ -99,7 +104,7 @@ end
 --- Emit a terminal QUERY (a control sequence whose reply arrives on `TermResponse`).
 ---@param seq string
 local function query(seq)
-    M.write(seq)
+    M.write_raw(seq)
 end
 
 -- ── cell-pixel size (ioctl TIOCGWINSZ, refined by CSI 14 t) ─────────────────

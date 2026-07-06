@@ -184,7 +184,7 @@ end
 ---@param buf integer
 function M.enable(buf)
     buf = cur(buf)
-    if not api.nvim_buf_is_valid(buf) or (bufs[buf] and bufs[buf].enabled) then
+    if not config.enabled or not api.nvim_buf_is_valid(buf) or (bufs[buf] and bufs[buf].enabled) then
         return
     end
     local st = bufs[buf]

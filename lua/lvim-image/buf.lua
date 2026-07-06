@@ -10,6 +10,19 @@ local config = require("lvim-image.config")
 
 local M = {}
 
+---@param buf integer
+---@param path string
+local function default_read(buf, path)
+    local ok, lines = pcall(vim.fn.readfile, path, "b")
+    if not ok then
+        vim.notify("lvim-image: failed to read " .. path, vim.log.levels.WARN)
+        return
+    end
+    vim.bo[buf].modifiable = true
+    api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.bo[buf].modified = false
+end
+
 --- `*.ext` patterns (both cases) for every configured format — drives the BufReadCmd registration.
 ---@return string[]
 local function patterns()
@@ -50,14 +63,22 @@ end
 --- viewer window options, and render — re-fit on resize, cleaned up on wipe.
 ---@param ev { buf: integer, match: string, file: string }
 function M.open(ev)
-    local image = require("lvim-image")
-    image.setup()
-    if not image.supported() then
-        return -- no graphics protocol → leave the buffer be
-    end
     local buf = ev.buf
     local src = vim.fn.fnamemodify((ev.match ~= "" and ev.match) or ev.file or api.nvim_buf_get_name(buf), ":p")
+    local image = require("lvim-image")
+    image.setup()
+    if not config.enabled or not image.supported() then
+        default_read(buf, src)
+        return
+    end
     local win = api.nvim_get_current_win()
+
+    local saved_winopts = {}
+    for _, opt in ipairs({ "number", "relativenumber", "list", "wrap", "cursorline", "signcolumn" }) do
+        pcall(function()
+            saved_winopts[opt] = vim.wo[win][opt]
+        end)
+    end
 
     vim.bo[buf].buftype = "nofile"
     vim.bo[buf].swapfile = false
@@ -102,6 +123,20 @@ function M.open(ev)
         callback = function()
             if pl then
                 pl:close()
+            end
+        end,
+    })
+    api.nvim_create_autocmd("BufWinLeave", {
+        group = grp,
+        buffer = buf,
+        once = true,
+        callback = function()
+            if api.nvim_win_is_valid(win) then
+                for opt, value in pairs(saved_winopts) do
+                    pcall(function()
+                        vim.wo[win][opt] = value
+                    end)
+                end
             end
         end,
     })

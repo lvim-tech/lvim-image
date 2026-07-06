@@ -34,9 +34,9 @@ local state = {}
 ---@param placement_id integer
 ---@param opts lvim-image.uiimg.Opts
 local function place(img_id, placement_id, opts)
-    terminal.write("\0277\27[?25l") -- save cursor + hide
+    terminal.write_raw("\0277\27[?25l") -- save cursor + hide
     kitty.place_at({ id = img_id }, opts.row or 1, opts.col or 1, opts.width, opts.height, placement_id)
-    terminal.write("\0278\27[?25h") -- restore cursor + show
+    terminal.write_raw("\0278\27[?25h") -- restore cursor + show
 end
 
 --- Display an image or update an existing one — the `vim.ui.img.set` contract. A string is raw PNG bytes to
@@ -78,9 +78,12 @@ end
 function M.del(id)
     if id == math.huge then
         local had = next(state) ~= nil
-        state = {}
         if had then
-            kitty.delete(math.huge)
+            for placement_id, entry in pairs(state) do
+                kitty.delete(entry.img_id, placement_id)
+                kitty.delete(entry.img_id)
+            end
+            state = {}
         end
         return had
     end
@@ -89,6 +92,7 @@ function M.del(id)
         return false
     end
     kitty.delete(entry.img_id, id)
+    kitty.delete(entry.img_id)
     state[id] = nil
     return true
 end
