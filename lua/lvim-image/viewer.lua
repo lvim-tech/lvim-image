@@ -161,7 +161,7 @@ function M.open(src, opts)
         -- wraps only the PANEL GROUP (image + details) as a `group_border` — a 1-cell " " gutter left/right by
         -- default — so it works whether or not the details block is present.
         group_border = config.border,
-        title = "  " .. vim.fn.fnamemodify(src, ":t"),
+        title = vim.fn.fnamemodify(src, ":t"),
         title_pos = "center",
         panel_border = "none",
         size = { width = { auto = true, max = 0.92 }, height = { auto = true, max = 0.9 } },
