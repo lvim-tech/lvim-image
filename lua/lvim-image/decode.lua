@@ -6,8 +6,10 @@
 --
 -- libvips' processing functions are variadic (a NULL-terminated option list); we call them with a trailing
 -- `nil` to terminate with no options. `libvips.so.42` is discovered from a small soname list (overridable via
--- config.decode.libvips). The module degrades gracefully — if libvips cannot be loaded, `to_rgba` returns nil
--- and the caller reports "unsupported format".
+-- config.decode.libvips). The module degrades gracefully — if libvips cannot be loaded and
+-- `config.decode.fallback` is on, decoding falls back to the ImageMagick CLI (`magick`/`convert`), still
+-- entirely in memory (the tool streams the pixels/PNG to stdout — never a temp file); otherwise `to_rgba`
+-- returns nil and the caller reports "unsupported format".
 --
 ---@module "lvim-image.decode"
 
@@ -97,12 +99,102 @@ end
 ---@field w integer     pixel width
 ---@field h integer     pixel height
 
+-- ─── external-CLI fallback (config.decode.fallback) ───────────────────────────
+-- When libvips cannot be loaded, decode through the ImageMagick CLI instead — still entirely in memory (the
+-- tool writes the pixels / PNG to stdout, captured here; never a temp file on disk). Used by to_rgba / to_png
+-- only after ensure() has failed AND config.decode.fallback is on.
+
+--- The ImageMagick invocation prefixes: IM7 ships one `magick` multi-tool (`magick …`, `magick identify …`);
+--- IM6 ships separate `convert` / `identify` binaries. nil when ImageMagick is absent.
+---@return { convert: string[], identify: string[] }?
+local function magick_bins()
+    if vim.fn.executable("magick") == 1 then
+        return { convert = { "magick" }, identify = { "magick", "identify" } }
+    end
+    if vim.fn.executable("convert") == 1 and vim.fn.executable("identify") == 1 then
+        return { convert = { "convert" }, identify = { "identify" } }
+    end
+    return nil
+end
+
+--- Run `argv`, capturing raw stdout BYTES. Returns nil + a message on any spawn failure / non-zero exit.
+---@param argv string[]
+---@return string? out, string? err
+local function run(argv)
+    local ok, res = pcall(function()
+        return vim.system(argv, { text = false }):wait()
+    end)
+    if not ok then
+        return nil, tostring(res)
+    end
+    if res.code ~= 0 then
+        return nil, (res.stderr ~= "" and res.stderr) or ("exit " .. tostring(res.code))
+    end
+    return res.stdout
+end
+
+--- Decode `path` to RGBA + dimensions via ImageMagick (first frame/page only, matching the single-image
+--- contract). `identify %w %h` gives the pixel size; `RGBA:-` streams the raw 8-bit RGBA that kitty `f=32` wants.
+---@param path string
+---@return lvim-image.decode.Result? result, string? err
+local function external_rgba(path)
+    local bins = magick_bins()
+    if not bins then
+        return nil, "libvips unavailable and ImageMagick (magick/convert) not found"
+    end
+    local first = path .. "[0]" -- first frame/page (GIF/PDF/…), so the buffer is exactly one image
+    local dims, derr = run(vim.list_extend(bins.identify, { "-format", "%w %h", first }))
+    if not dims then
+        return nil, "identify failed: " .. (derr or "")
+    end
+    local ws, hs = dims:match("(%d+)%s+(%d+)")
+    local w, h = tonumber(ws), tonumber(hs)
+    if not w or not h then
+        return nil, "identify: could not parse dimensions"
+    end
+    local rgba, cerr = run(vim.list_extend(bins.convert, { first, "-depth", "8", "RGBA:-" }))
+    if not rgba then
+        return nil, "convert failed: " .. (cerr or "")
+    end
+    -- Trust identify's WxH: keep exactly w*h*4 bytes (a short buffer would misalign the transmit).
+    local need = w * h * 4
+    if #rgba < need then
+        return nil, ("convert: short RGBA buffer (%d < %d)"):format(#rgba, need)
+    end
+    return { rgba = rgba:sub(1, need), w = w, h = h }
+end
+
+--- Encode `path` to PNG bytes via ImageMagick (first frame/page), in memory.
+---@param path string
+---@return string? png, string? err
+local function external_png(path)
+    local bins = magick_bins()
+    if not bins then
+        return nil, "libvips unavailable and ImageMagick (magick/convert) not found"
+    end
+    local png, err = run(vim.list_extend(bins.convert, { path .. "[0]", "png:-" }))
+    if not png then
+        return nil, "png convert failed: " .. (err or "")
+    end
+    return png
+end
+
+--- Whether decoding of non-PNG formats is possible WITHOUT libvips — i.e. the fallback is enabled and
+--- ImageMagick is present. Used by health to report the degraded-but-working path.
+---@return boolean
+function M.fallback_available()
+    return config.decode.fallback == true and magick_bins() ~= nil
+end
+
 --- Decode `path` to RGBA pixels entirely in memory (no temp file). Normalises to sRGB, ensures a 4th (alpha)
 --- band and 8-bit samples, then reads the raw buffer — exactly the `f=32` layout kitty wants.
 ---@param path string
 ---@return lvim-image.decode.Result? result, string? err
 function M.to_rgba(path)
     if not ensure() then
+        if config.decode.fallback then
+            return external_rgba(path)
+        end
         return nil, "libvips unavailable"
     end
     local v = assert(vips) -- non-nil once ensure() succeeded
@@ -162,6 +254,9 @@ end
 ---@return string? png, string? err
 function M.to_png(path)
     if not ensure() then
+        if config.decode.fallback then
+            return external_png(path)
+        end
         return nil, "libvips unavailable"
     end
     local v = assert(vips)

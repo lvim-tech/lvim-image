@@ -14,8 +14,8 @@ CONTENTS                                                     *lvim-image-content
 
 lvim-image displays images inside Neovim across all terminal graphics protocols
 (kitty, iTerm2, sixel, ueberzugpp). Non-PNG sources (JPEG / GIF / WEBP / TIFF /
-SVG / PDF / …) are decoded to pixels IN MEMORY via libvips — no ImageMagick and
-no PNG copies written to disk. It ships:
+SVG / PDF / …) are decoded to pixels IN MEMORY via libvips (or an optional
+ImageMagick-CLI fallback) — no PNG copies written to disk. It ships:
 
 - a standalone floating VIEWER (`:LvimImage`) — a titled surface with the image,
   a toggleable details panel, and a footer bar;
@@ -32,7 +32,8 @@ no PNG copies written to disk. It ships:
 - lvim-utils (base)
 - lvim-ui (the floating viewer builds on its surface toolkit)
 - a terminal with a graphics protocol (kitty / iTerm2 / sixel / ueberzugpp)
-- libvips for non-PNG formats (optionally gs / rsvg-convert for PDF / SVG)
+- libvips for non-PNG formats (optionally gs / rsvg-convert for PDF / SVG), or
+  ImageMagick (magick/convert) as the decode.fallback
 
 Run `:checkhealth lvim-image` to see the detected terminal + capabilities.
 
@@ -89,6 +90,6 @@ Merges {opts} into the live config in place (a shorter override list REPLACES th
 default wholesale). Optional. See the README for the FULL default config; the
 option set is documented as `lvim-image.Config` in `lua/lvim-image/config.lua`
 (enabled, force, backend, formats, max_width/height, border, detail colours,
-decode, inline, debug).
+decode, inline).
 
 vim:tw=78:ts=8:ft=help:norl:

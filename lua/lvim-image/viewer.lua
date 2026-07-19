@@ -106,9 +106,13 @@ function M.open(src, opts)
     end
     ensure_hl()
 
+    local show_details = opts.details ~= false -- details shown by default
     -- Cap the image to the configured fraction of the editor, LEAVING room for the details panel + chrome, so
-    -- the popup sizes tightly around the image rather than sprawling.
-    local max_w = opts.max_width or budget(config.max_width, vim.o.columns, math.floor(vim.o.columns * 0.8)) - 50
+    -- the popup sizes tightly around the image rather than sprawling. The details column (fixed 44 + gutter) is
+    -- only reserved when it will actually be shown — with `details = false` the image gets the full width.
+    local details_reserve = show_details and 50 or 0
+    local max_w = opts.max_width
+        or budget(config.max_width, vim.o.columns, math.floor(vim.o.columns * 0.8)) - details_reserve
     local max_h = opts.max_height or budget(config.max_height, vim.o.lines, math.floor(vim.o.lines * 0.8)) - 4
     local icols, irows = img:cells(math.max(10, max_w), math.max(5, max_h))
 
@@ -134,7 +138,6 @@ function M.open(src, opts)
     }
 
     local rows = require("lvim-image").details(src, img)
-    local show_details = opts.details ~= false -- details shown by default
 
     -- Both panels are PLAIN blocks INSIDE the popup, so its auto width includes them. (The `id="preview"` dock
     -- seam places the side panel OUTSIDE the computed width, so it spilled past the popup edge.) Toggling the

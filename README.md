@@ -2,7 +2,8 @@
 
 Display images **inside Neovim** across all terminal graphics protocols (kitty, iTerm2, sixel, ueberzugpp) —
 part of the **lvim-tech** set. Non-PNG sources (JPEG / GIF / WEBP / TIFF / SVG / PDF / …) are decoded to pixels
-**in memory** via libvips — no ImageMagick required and no PNG copies written to disk. It ships:
+**in memory** via libvips (or, if libvips is unavailable, an optional ImageMagick-CLI fallback) — no PNG copies
+written to disk. It ships:
 
 - a standalone floating **viewer** (`:LvimImage`) — a titled surface with the image, a toggleable details
   panel, and a footer bar;
@@ -15,7 +16,8 @@ part of the **lvim-tech** set. Non-PNG sources (JPEG / GIF / WEBP / TIFF / SVG /
 Requires **Neovim >= 0.12.x**, [lvim-utils](https://github.com/lvim-tech/lvim-utils) (base) and
 [lvim-ui](https://github.com/lvim-tech/lvim-ui) (the floating viewer builds on its surface toolkit). A terminal
 with a graphics protocol (kitty / iTerm2 / sixel / ueberzugpp). For non-PNG formats, **libvips** (optionally
-`gs` / `rsvg-convert` for PDF / SVG). Run `:checkhealth lvim-image` to see what is detected.
+`gs` / `rsvg-convert` for PDF / SVG), or **ImageMagick** (`magick`/`convert`) as the `decode.fallback`. Run
+`:checkhealth lvim-image` to see what is detected.
 
 ## Protocol support
 
@@ -114,7 +116,7 @@ require("lvim-image").setup({
     detail_value = "yellow",
     decode = {
         libvips = nil, -- explicit path to libvips.so (nil = auto-discover a common soname)
-        fallback = true, -- if libvips can't load, pipe `magick`/`vips` stdout into memory (still no disk cache)
+        fallback = true, -- if libvips can't load, decode via the ImageMagick CLI (magick/convert) in memory (no disk cache)
     },
     -- Inline DOCUMENT images (markdown / html / latex): drawn as virtual lines under the source line.
     inline = {
@@ -124,11 +126,6 @@ require("lvim-image").setup({
         max_height = 30, -- inline cell-height CAP (fraction of the window <=1, or absolute cells)
         debounce = 150, -- ms after an edit before placements are reconciled
         open_key = "<CR>", -- buffer-local key (while inline is on) to open the viewer for the image under the cursor
-    },
-    debug = {
-        request = false, -- log every graphics escape written
-        decode = false, -- log the decode path taken (passthrough / libvips / fallback)
-        placement = false, -- log placement geometry
     },
 })
 ```

@@ -67,6 +67,14 @@ function M.check()
     if c.placeholders then
         h.ok("kitty unicode placeholders: supported (inline-anchored images)")
     end
+    -- zellij does not (yet) pass graphics escapes through to the outer terminal, but the outer TERM can leak
+    -- through so a kitty/iTerm2/sixel capability is still claimed. Warn that those escapes will not render.
+    if info.in_zellij and (c.kitty or c.iterm2 or c.sixel) then
+        h.warn(
+            "running inside zellij, which does not pass terminal-graphics escapes through — kitty/iTerm2/sixel "
+                .. "placements will not render; use the ueberzug overlay, or run outside zellij"
+        )
+    end
 
     local cfg_backend = image.config.backend
     local proto = cfg_backend ~= "auto" and cfg_backend
@@ -98,8 +106,15 @@ function M.check()
     local ok, decode = pcall(require, "lvim-image.decode")
     if ok and decode.available() then
         h.ok("libvips: available (in-memory decode of JPEG/GIF/WEBP/TIFF/SVG/PDF — no temp files)")
+    elseif ok and decode.fallback_available() then
+        h.ok("libvips: NOT available — falling back to the ImageMagick CLI (magick/convert) for non-PNG decode")
+    elseif ok and image.config.decode.fallback then
+        h.warn(
+            "libvips NOT available and ImageMagick (magick/convert) not found — only PNG passthrough works; "
+                .. "install libvips, or ImageMagick for the fallback"
+        )
     else
-        h.warn("libvips: NOT available — only PNG passthrough works; install libvips for other formats")
+        h.warn("libvips: NOT available — only PNG passthrough works; install libvips (or enable decode.fallback)")
     end
 
     for _, b in ipairs({ "gs", "rsvg-convert" }) do

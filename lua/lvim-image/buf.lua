@@ -89,19 +89,36 @@ local function render_image(buf, win, src)
 
     ---@type lvim-image.Placement|nil
     local pl
+    -- Re-derive the window from the BUFFER on each render: the image buffer can be re-shown in a DIFFERENT
+    -- window (after `:hide` + reopen), so the originally-captured `win` may be stale — the window actually
+    -- showing the buffer is the source of truth.
     local function render()
-        if not (api.nvim_buf_is_valid(buf) and api.nvim_win_is_valid(win)) then
+        local w = vim.fn.bufwinid(buf)
+        if not api.nvim_buf_is_valid(buf) or w == -1 then
             return
         end
         if pl then
             pl:close()
         end
-        pl = display(buf, win, src)
+        pl = display(buf, w, src)
     end
     render()
 
     local grp = api.nvim_create_augroup("LvimImageBuf_" .. buf, { clear = true })
+    -- GROUP-GLOBAL (not `buffer = buf`): a buffer-local resize autocmd fires only while the image buffer is
+    -- CURRENT, so resizing the editor with another window focused would leave the image at the stale geometry.
+    -- Gate on the buffer being visible so it re-fits only when it is actually on screen.
     api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
+        group = grp,
+        callback = function()
+            if vim.fn.bufwinid(buf) ~= -1 then
+                vim.schedule(render)
+            end
+        end,
+    })
+    -- Re-render when the image buffer is (re-)shown in a window — e.g. re-opening a `:hide`-den image buffer,
+    -- whose placement was torn down when it left the screen.
+    api.nvim_create_autocmd("BufWinEnter", {
         group = grp,
         buffer = buf,
         callback = function()
@@ -116,6 +133,8 @@ local function render_image(buf, win, src)
             if pl then
                 pl:close()
             end
+            -- drop the augroup so the group-global resize autocmd above does not outlive the buffer.
+            pcall(api.nvim_del_augroup_by_id, grp)
         end,
     })
     api.nvim_create_autocmd("BufWinLeave", {

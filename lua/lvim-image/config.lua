@@ -17,7 +17,6 @@
 ---@field detail_value string                  palette accent NAME for detail-row values (e.g. "yellow")
 ---@field decode lvim-image.Config.Decode
 ---@field inline lvim-image.Config.Inline
----@field debug { request: boolean, decode: boolean, placement: boolean }
 
 ---@class lvim-image.Config.Inline
 ---@field enabled boolean     auto-render inline images when a document buffer of a `filetypes` type opens
@@ -29,7 +28,7 @@
 
 ---@class lvim-image.Config.Decode
 ---@field libvips string|nil   explicit path to libvips.so (nil = auto-discover common soname)
----@field fallback boolean     when libvips is unavailable, pipe an external tool (magick/vips) to memory
+---@field fallback boolean     when libvips is unavailable, decode via the ImageMagick CLI (magick/convert) in memory
 
 ---@type lvim-image.Config
 return {
@@ -79,8 +78,9 @@ return {
         -- Auto-discovered from a small soname list when nil (see image/decode.lua). Set an absolute path to
         -- pin a specific libvips build.
         libvips = nil,
-        -- If libvips cannot be loaded, fall back to piping `magick`/`vips` stdout into memory (still no disk
-        -- cache file). Off keeps the module strictly libvips-only + PNG-passthrough.
+        -- If libvips cannot be loaded, fall back to decoding through the ImageMagick CLI — `magick` (IM7) or
+        -- `convert`/`identify` (IM6) — streaming pixels/PNG to stdout, still no disk cache file. Off keeps the
+        -- module strictly libvips-only + PNG-passthrough.
         fallback = true,
     },
     -- Inline DOCUMENT images (markdown / html / latex): images are drawn as virtual lines under their source
@@ -101,10 +101,5 @@ return {
         -- Buffer-local key (active only while inline is ON) that opens the full float viewer for the image on
         -- the cursor's line; off an image line it replays the key's native action, so it stays usable.
         open_key = "<CR>",
-    },
-    debug = {
-        request = false, -- log every graphics escape written
-        decode = false, -- log the decode path taken (passthrough / libvips / fallback)
-        placement = false, -- log placement geometry
     },
 }
