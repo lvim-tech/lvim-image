@@ -219,10 +219,14 @@ function M.inline(img, opts)
         return nil
     end
     -- Inline document images ride the unicode-PLACEHOLDER grid (virt_lines cells the terminal repaints as the
-    -- buffer scrolls). Backends without placeholders (iterm2 / sixel / ueberzug) cannot anchor an image to
-    -- scrolling buffer cells, so inline is a clean no-op for them — the float VIEWER still works. Returning nil
-    -- here (rather than rendering the grid) avoids leaving raw placeholder glyphs in the document.
-    if not img:can_placeholder() then
+    -- buffer scrolls). This needs BOTH sides: a backend that can create the virtual placement
+    -- (`img:can_placeholder()` — the kitty backend) AND a terminal that actually RENDERS the grid
+    -- (`caps.placeholders`). The terminal half is the one that matters here: WezTerm speaks the kitty graphics
+    -- protocol, so the kitty backend is active and `can_placeholder()` is true, but it does NOT paint the
+    -- U+10EEEE cells — checking only the backend printed the raw placeholder glyphs into the document (the
+    -- reported missing-glyph warning). Terminals that fail either half get a clean no-op; the float VIEWER
+    -- still works for them. This is the same gate `Placement.new` uses for the full-window path.
+    if not (terminal.capabilities().placeholders and img:can_placeholder()) then
         return nil
     end
     local cols, rows = img:cells(opts.max_w, opts.max_h)

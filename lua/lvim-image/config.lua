@@ -8,6 +8,8 @@
 ---@field enabled boolean                     master switch
 ---@field force boolean                        draw even when no protocol is detected (assume kitty)
 ---@field backend "auto"|"kitty"|"iterm2"|"sixel"|"ueberzug"  force a specific protocol, or auto-detect
+---@field wezterm_placeholders boolean         WezTerm unicode-placeholder support. Default false: no WezTerm build renders the placeholder grid (verified through the 20260716 nightly — it prints U+10EEEE as glyphs while the cursor-positioned popup works). Set true only if a future build adds it.
+---@field ghostty_placeholders boolean         Ghostty unicode-placeholder support: true (all released builds support it) — an escape hatch, set false only if a build ever misbehaves
 ---@field provide_ui_img boolean               also register lvim-image as `vim.ui.img` (opt-in; the direct API is unaffected)
 ---@field formats string[]                     source extensions the module will attempt to display
 ---@field max_width number                     max viewer width (fraction ≤ 1 of the editor, or absolute cells)
@@ -38,6 +40,16 @@ return {
     force = false,
     -- "auto" picks the best detected protocol (kitty > iterm2 > sixel > ueberzug). Pin one to override.
     backend = "auto",
+    -- WezTerm speaks the kitty graphics protocol for DIRECT (cursor-positioned) placement — which is why
+    -- the popup viewer works — but does NOT render kitty UNICODE PLACEHOLDERS, the virtual-placement grid
+    -- that inline document images ride. Verified empirically: on the 20260716 nightly the grid still prints
+    -- as U+10EEEE missing-glyph boxes while the popup renders fine, so it is a standing WezTerm limitation,
+    -- not a version thing. Kept false so no grid is emitted (no garbage); flip true only if a future WezTerm
+    -- build actually implements placeholders. kitty/ghostty always support them and ignore this.
+    wezterm_placeholders = false,
+    -- Ghostty is kitty-graphics-native and every released build renders unicode placeholders. This is a
+    -- plain escape hatch — set false only if a build ever misbehaves, falling back to cursor-positioned.
+    ghostty_placeholders = true,
     -- Also register lvim-image as `vim.ui.img` (Neovim's EXPERIMENTAL native image API). OFF by default:
     -- lvim-image's own viewer / inline / attach work DIRECTLY regardless of Neovim version — this only adds an
     -- integration. When ON, the native `vim.ui.img` (and any plugin built on it) routes through lvim-image's

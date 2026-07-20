@@ -23,6 +23,8 @@ local M = {}
 
 ---@class lvim-image.terminal.State
 ---@field term string|nil            resolved terminal name (kitty/ghostty/wezterm/iterm2/foot/…)
+---@field term_source "env"|"query"  how `term` was resolved (env guess vs proven by XTVERSION)
+---@field term_version integer|nil    the terminal's version from XTVERSION (WezTerm's build date YYYYMMDD)
 ---@field in_tmux boolean
 ---@field in_zellij boolean
 ---@field is_ssh boolean
@@ -32,6 +34,12 @@ local M = {}
 ---@field queried boolean
 local state = {
     term = nil,
+    -- "env" when `term` was guessed from environment variables, "query" once XTVERSION confirmed it.
+    -- The distinction matters INSIDE tmux: there the terminal env vars (KITTY_WINDOW_ID, WEZTERM_PANE,
+    -- TERM=xterm-kitty) belong to whatever terminal the tmux SERVER was first started under, not the one
+    -- displaying this pane now. A tmux server born under kitty carries KITTY_WINDOW_ID into every pane,
+    -- including panes shown in WezTerm — so an env guess of "kitty" there is not proof of anything.
+    term_source = "env",
     in_tmux = false,
     in_zellij = false,
     is_ssh = false,
@@ -208,12 +216,36 @@ end
 
 --- Map the resolved terminal name to protocol capabilities. Refined by async queries: `CSI 14 t` proves the
 --- terminal answers pixel geometry, and DA1 (`CSI c`) with a `;4` attribute proves sixel.
+---
+--- Fires `User LvimImageCapsChanged` when a capability actually flips, so consumers that rendered against
+--- the earlier (env-guessed) capabilities can re-render. This is what makes an inline image drawn in
+--- kitty+tmux BEFORE the XTVERSION reply appear once the reply upgrades `placeholders` false->true: the
+--- inline manager reconciles on the event rather than waiting for the next edit.
 local function recompute_caps()
     local t = state.term or ""
     local caps = state.caps
+    local before = caps.kitty and 1 or 0
+    before = before + (caps.placeholders and 2 or 0) + (caps.sixel and 4 or 0) + (caps.iterm2 and 8 or 0)
     -- kitty graphics protocol (+ unicode placeholders on kitty/ghostty)
     caps.kitty = t == "kitty" or t == "ghostty" or t == "wezterm" or vim.env.KITTY_WINDOW_ID ~= nil
-    caps.placeholders = t == "kitty" or t == "ghostty" -- wezterm supports the protocol but NOT placeholders
+    -- Unicode placeholders (the U+10EEEE grid). kitty and ghostty always have them. WezTerm speaks the kitty
+    -- graphics protocol but only gained placeholder support in later builds — an old one prints the grid as
+    -- garbage codepoints, so it is gated on the build date carried in the XTVERSION reply (see
+    -- `wezterm_placeholders` / `wezterm_placeholder_min`). Inside tmux this must in every case be PROVEN by
+    -- the XTVERSION passthrough reply, never an env guess: a placeholder claim based on an inherited
+    -- KITTY_WINDOW_ID is exactly what drew U+10EEEE into an old WezTerm pane. Until the query lands, assume no
+    -- placeholders and take the cursor-positioned fallback (which works everywhere), then upgrade on the reply.
+    local proven = not state.in_tmux or state.term_source == "query"
+    local cfg = require("lvim-image.config")
+    local placeholders = t == "kitty"
+    if t == "ghostty" then
+        placeholders = cfg.ghostty_placeholders ~= false
+    elseif t == "wezterm" then
+        -- WezTerm does not render the placeholder grid at any tested build (see config) — off unless the
+        -- user opts in for a hypothetical future build that does.
+        placeholders = cfg.wezterm_placeholders == true
+    end
+    caps.placeholders = placeholders and proven
     -- iTerm2 inline images
     caps.iterm2 = t == "iterm2" or t == "wezterm" or t == "konsole"
     -- sixel (known terminals; DA1 may add more at runtime)
@@ -221,6 +253,16 @@ local function recompute_caps()
     -- ueberzugpp overlay: available when the binary exists and we are on X11/Wayland (not headless/tty).
     caps.ueberzug = (vim.fn.executable("ueberzugpp") == 1 or vim.fn.executable("ueberzug") == 1)
         and (vim.env.DISPLAY ~= nil or vim.env.WAYLAND_DISPLAY ~= nil)
+
+    local after = (caps.kitty and 1 or 0) + (caps.placeholders and 2 or 0) + (caps.sixel and 4 or 0)
+    after = after + (caps.iterm2 and 8 or 0)
+    if after ~= before then
+        -- Scheduled: recompute_caps can run from the TermResponse callback, and firing an autocmd that
+        -- may redraw images from inside that callback is best kept off the response-handler stack.
+        vim.schedule(function()
+            pcall(api.nvim_exec_autocmds, "User", { pattern = "LvimImageCapsChanged" })
+        end)
+    end
 end
 
 --- Handle a `TermResponse` payload: XTVERSION (terminal name), CSI-14t (text-area pixel size → cell), DA1
@@ -230,10 +272,17 @@ local function on_term_response(data)
     if type(data) ~= "string" then
         return
     end
-    -- XTVERSION: DCS > | <name> <version> ST  → e.g. ">|kitty 0.32.2"
+    -- XTVERSION: DCS > | <name> <version> ST  → e.g. ">|kitty 0.32.2" or ">|WezTerm 20260716-195552-76b606ec"
     local name = data:match("[>P]|(%a+)")
     if name then
         state.term = name:lower()
+        -- WezTerm's version is a build DATE (YYYYMMDD-…); capture the leading date so the placeholder gate
+        -- can tell an old build (garbage) from a new one (real placeholder rendering).
+        local ver = data:match("[>P]|%a+%s+(%d+)")
+        state.term_version = ver and tonumber(ver) or nil
+        -- XTVERSION is the terminal answering for itself (through tmux passthrough when multiplexed), so
+        -- this identity is PROVEN — it is what lets placeholders be claimed inside tmux.
+        state.term_source = "query"
         recompute_caps()
     end
     -- CSI 4 ; height ; width t  → text-area size in pixels; divide by the grid to get the cell size.
@@ -263,6 +312,7 @@ function M.setup()
     state.in_zellij = vim.env.ZELLIJ ~= nil
     state.is_ssh = vim.env.SSH_CLIENT ~= nil or vim.env.SSH_CONNECTION ~= nil
     state.term = term_from_env()
+    state.term_source = "env"
 
     if state.in_tmux then
         -- Wrap every sequence as `DCS tmux; <ESC doubled> ST` and allow it through the multiplexer. Set the

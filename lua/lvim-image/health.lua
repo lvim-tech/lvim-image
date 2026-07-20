@@ -66,6 +66,12 @@ function M.check()
     cap("ueberzug", c.ueberzug)
     if c.placeholders then
         h.ok("kitty unicode placeholders: supported (inline-anchored images)")
+    elseif c.kitty then
+        -- WezTerm speaks the kitty graphics protocol but not the placeholder grid; inside tmux this is
+        -- also the pre-XTVERSION state for a real kitty. Either way images render, just not scroll-anchored.
+        local why = info.in_tmux and info.term_source == "env" and "not yet confirmed through tmux (awaiting XTVERSION)"
+            or "this terminal renders kitty graphics but not the placeholder grid"
+        h.info("kitty unicode placeholders: off — " .. why .. "; images render cursor-positioned")
     end
     -- zellij does not (yet) pass graphics escapes through to the outer terminal, but the outer TERM can leak
     -- through so a kitty/iTerm2/sixel capability is still claimed. Warn that those escapes will not render.

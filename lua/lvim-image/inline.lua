@@ -348,6 +348,23 @@ function M.setup()
             end)
         end
     end
+
+    -- Terminal capabilities are refined ASYNC (the XTVERSION passthrough reply lands after setup). A buffer
+    -- whose first reconcile ran while `placeholders` was still unconfirmed rendered nothing; reconcile every
+    -- enabled buffer when the capabilities flip, so the images appear the moment the terminal is proven —
+    -- without the user having to edit the buffer to trigger it. Hard reconcile: the capability change may mean
+    -- a different placement path, so re-transmit.
+    api.nvim_create_autocmd("User", {
+        group = api.nvim_create_augroup("LvimImageInlineCaps", { clear = true }),
+        pattern = "LvimImageCapsChanged",
+        callback = function()
+            for buf, st in pairs(bufs) do
+                if st.enabled and api.nvim_buf_is_valid(buf) then
+                    reconcile(buf, true)
+                end
+            end
+        end,
+    })
 end
 
 return M
