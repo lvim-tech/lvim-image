@@ -2,7 +2,7 @@
 -- float). One surface with a title (the file name), a MAIN panel that shows the image (via an `update`
 -- provider so the placement OWNS the buffer), and a toggleable DETAILS panel with coloured `Label  value`
 -- rows (the accents chosen by config, from the palette). Both panels are plain blocks INSIDE the popup so its
--- auto width contains them; `d` toggles the details (reopen with/without the block), `q` closes. The border
+-- auto width contains them; `t` toggles the details (reopen with/without the block), `q` closes. The border
 -- comes from config (the shared `config.ui.border`, overridable per-viewer) — nothing hardcoded.
 --
 ---@module "lvim-image.viewer"
@@ -54,8 +54,8 @@ local function details_provider(rows, cap_height)
         cursorline = true,
         keys = function(map)
             -- Read-only viewer: swallow file-explorer / edit keys that would otherwise leak to GLOBAL maps
-            -- (e.g. `-` opening a directory browser). Scrolling (j/k/gg/G/<C-d>/<C-u>) and the frame's d/q
-            -- close keys still work.
+            -- (e.g. `-` opening a directory browser). Scrolling (j/k/gg/G/<C-d>/<C-u>) and the frame's own
+            -- `t` (toggle info) / `q` (close) still work — neither is in the list below.
             for _, k in ipairs({ "-", "i", "a", "o", "O", "x", "p", "r", "c", "s" }) do
                 map(k, function() end)
             end
@@ -175,7 +175,10 @@ function M.open(src, opts)
                     align = "center",
                     fill = true,
                     items = {
-                        { key = "d", name = show_details and "hide info" or "details", run = toggle },
+                        -- One key, one name, both states: the footer already shows whether the panel is
+                        -- open, so a label that renames itself makes the key look like two different
+                        -- commands.
+                        { key = "t", name = "toggle info", run = toggle },
                         {
                             key = "q",
                             name = "close",

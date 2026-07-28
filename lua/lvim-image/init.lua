@@ -165,7 +165,7 @@ function M.supported()
 end
 
 --- Open the composite floating VIEWER for `src` — a lvim-ui surface with a border-title (the file
---- name), the image, a toggleable `d` DETAILS side panel, and a `d`/`q` footer bar. Returns the surface
+--- name), the image, a toggleable `t` DETAILS side panel, and a `t`/`q` footer bar. Returns the surface
 --- state handle (with `.close`), or nil on failure (with a notify).
 ---@param src string
 ---@param opts? { details?: boolean, max_width?: integer, max_height?: integer }

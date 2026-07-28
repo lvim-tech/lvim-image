@@ -23,7 +23,7 @@ local M = {}
 
 ---@class lvim-image.terminal.State
 ---@field term string|nil            resolved terminal name (kitty/ghostty/wezterm/iterm2/foot/…)
----@field term_source "env"|"query"  how `term` was resolved (env guess vs proven by XTVERSION)
+---@field term_source "env"|"query"|"tmux-client"  how `term` was resolved (env guess vs proven by XTVERSION)
 ---@field term_version integer|nil    the terminal's version from XTVERSION (WezTerm's build date YYYYMMDD)
 ---@field in_tmux boolean
 ---@field in_zellij boolean
@@ -183,6 +183,59 @@ end
 
 -- ── detection ───────────────────────────────────────────────────────────────
 
+--- Map a `TERM`-style string to one of our terminal names. Used for this process's own `$TERM` and,
+--- inside tmux, for the CLIENT's termname — the two are different questions with the same answer shape.
+---@param term string|nil
+---@return string|nil
+local function term_from_termname(term)
+    term = term or ""
+    if term:find("kitty", 1, true) then
+        return "kitty"
+    end
+    if term:find("ghostty", 1, true) then
+        return "ghostty"
+    end
+    if term:find("foot", 1, true) then
+        return "foot"
+    end
+    if term:find("contour", 1, true) then
+        return "contour"
+    end
+    if term:find("wezterm", 1, true) then
+        return "wezterm"
+    end
+    return nil
+end
+
+--- The terminal OUTSIDE tmux, asked of tmux itself.
+---
+--- Inside a multiplexer the terminal's own identity is unreachable by query: `CSI > q` is ANSWERED BY TMUX
+--- FOR ITSELF (measured 2026-07-28 — a plain XTVERSION in a kitty+tmux pane replies `DCS >|tmux 3.7b`), and
+--- the same query wrapped in passthrough gets no reply at all, because kitty's answer goes to the outer
+--- terminal's input and tmux does not route it back into the pane. So the reply that lands on `TermResponse`
+--- is tmux's self-report — which is why `state.term` was "tmux" here and every kitty-only capability was
+--- refused.
+---
+--- tmux knows what it is attached to and will say so: `#{client_termname}` is `xterm-kitty` in exactly the
+--- session where the query said `tmux`. That is an authoritative answer from the process that actually has
+--- the information, not an inference — and it costs one short-lived spawn, once.
+---@param cb fun(name: string|nil)
+---@return nil
+local function term_from_tmux(cb)
+    local ok = pcall(function()
+        vim.system(
+            { "tmux", "display-message", "-p", "#{client_termname}" },
+            { text = true },
+            vim.schedule_wrap(function(r)
+                cb(term_from_termname(((r.stdout or ""):gsub("%s+$", ""))))
+            end)
+        )
+    end)
+    if not ok then
+        cb(nil)
+    end
+end
+
 --- Resolve the terminal name from the environment (a synchronous first guess; `CSI > q` refines it).
 ---@return string|nil
 local function term_from_env()
@@ -235,7 +288,9 @@ local function recompute_caps()
     -- the XTVERSION passthrough reply, never an env guess: a placeholder claim based on an inherited
     -- KITTY_WINDOW_ID is exactly what drew U+10EEEE into an old WezTerm pane. Until the query lands, assume no
     -- placeholders and take the cursor-positioned fallback (which works everywhere), then upgrade on the reply.
-    local proven = not state.in_tmux or state.term_source == "query"
+    -- `tmux-client` is as proven as a query reply: it is tmux reporting the terminal it is attached to,
+    -- which is the one piece of information the query cannot reach from inside a pane.
+    local proven = not state.in_tmux or state.term_source == "query" or state.term_source == "tmux-client"
     local cfg = require("lvim-image.config")
     local placeholders = t == "kitty"
     if t == "ghostty" then
@@ -244,6 +299,15 @@ local function recompute_caps()
         -- WezTerm does not render the placeholder grid at any tested build (see config) — off unless the
         -- user opts in for a hypothetical future build that does.
         placeholders = cfg.wezterm_placeholders == true
+    end
+    if state.in_tmux then
+        -- Knowing the outer terminal is kitty does NOT establish that the placeholder GRID survives the
+        -- multiplexer: tmux owns every cell it draws, and the placeholder mechanism encodes the image
+        -- reference in the cell's own contents and colours. Whether that passes through intact is unproven
+        -- here, and guessing wrong is not symmetric — a terminal that does not render the grid prints
+        -- U+10EEEE as literal glyphs all over the buffer (exactly what an old WezTerm build did). So inside
+        -- tmux the grid stays OFF until the user turns it on and looks.
+        placeholders = placeholders and cfg.tmux_placeholders == true
     end
     caps.placeholders = placeholders and proven
     -- iTerm2 inline images
@@ -274,6 +338,13 @@ local function on_term_response(data)
     end
     -- XTVERSION: DCS > | <name> <version> ST  → e.g. ">|kitty 0.32.2" or ">|WezTerm 20260716-195552-76b606ec"
     local name = data:match("[>P]|(%a+)")
+    if name and name:lower() == "tmux" then
+        -- tmux answering XTVERSION for ITSELF. Measured: this is what arrives in a kitty+tmux pane, and
+        -- accepting it overwrites the real terminal's identity with the multiplexer's — the reason every
+        -- kitty-only capability was refused inside tmux. The outer terminal is resolved from
+        -- `#{client_termname}` instead (see `term_from_tmux`); this reply carries no information we want.
+        return
+    end
     if name then
         state.term = name:lower()
         -- WezTerm's version is a build DATE (YYYYMMDD-…); capture the leading date so the placeholder gate
@@ -340,6 +411,19 @@ function M.setup()
         if state.in_tmux then
             pcall(function()
                 vim.system({ "tmux", "set", "-p", "allow-passthrough", "all" }) -- async: fire and forget
+            end)
+            -- Ask tmux what it is attached to. The query path cannot answer this from inside a pane, so
+            -- this is the only authoritative source of the outer terminal's identity.
+            term_from_tmux(function(name)
+                if name then
+                    -- Recorded even when it AGREES with the env guess: what changes is not the name but
+                    -- its standing. `KITTY_WINDOW_ID` is inherited by any child of a kitty window and is
+                    -- set by other terminals too, so an env guess is never proof; tmux naming its own
+                    -- client is. The capability gate reads the SOURCE, not just the name.
+                    state.term = name
+                    state.term_source = "tmux-client"
+                    recompute_caps()
+                end
             end)
         end
         M.cell_size() -- prime from ioctl (refined by the CSI-14t reply on TermResponse)
