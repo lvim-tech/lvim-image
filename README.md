@@ -8,7 +8,7 @@ written to disk. It ships:
 - a standalone floating **viewer** (`:LvimImage`) — a titled surface with the image, a toggleable details
   panel, and a footer bar;
 - **inline document images** (`:LvimImageInline`) — images drawn as virtual lines under their source line in
-  markdown / HTML / LaTeX (via shipped treesitter queries), never editing the buffer text;
+  markdown / HTML / LaTeX / org (via shipped treesitter queries), never editing the buffer text;
 - an **`attach`** entry point used by file-buffers and picker previews to render an image into any window.
 
 ## Requirements
@@ -87,6 +87,29 @@ image.attach(buf, win, src, opts) -- render into an existing buffer + window (pr
 image.info() -- the detected terminal + capabilities (also :checkhealth lvim-image)
 ```
 
+### What counts as an inline image
+
+Discovery is per language, through queries the plugin ships privately (`lua/lvim-image/queries/
+<lang>/images.scm`) and reads straight off the runtimepath — they are never registered under a
+global query name, so they cannot merge with or clash against another plugin's `images.scm`:
+
+| Language | Syntax |
+| --- | --- |
+| markdown | `![alt](path)` |
+| html | `<img src="path">` (open and self-closing) |
+| latex | `\includegraphics{path}` |
+| org | `[[path]]` and `[[path][description]]` (a `file:` prefix is stripped) |
+
+Org is the odd one: its grammar has **no node for a link at all** — the brackets and the words
+between them are separate tokens inside one expression — so the query captures the expression
+whole and the target is unwrapped when the path is resolved. Links that are not images
+(`[[https://…]]`, `[[#anchor]]`) fall out at the same place every other format's do: the scheme
+check and the extension test.
+
+A path may be relative to the file, to the project root, or `/`-rooted — which is tried both as a
+real filesystem path and, the common README case, as project-root-relative, so
+`/assets/logo.png` resolves to `<root>/assets/logo.png`.
+
 ## Configuration
 
 `setup()` merges your options into the live config in place (a shorter override list replaces the default
@@ -118,7 +141,7 @@ require("lvim-image").setup({
         libvips = nil, -- explicit path to libvips.so (nil = auto-discover a common soname)
         fallback = true, -- if libvips can't load, decode via the ImageMagick CLI (magick/convert) in memory (no disk cache)
     },
-    -- Inline DOCUMENT images (markdown / html / latex): drawn as virtual lines under the source line.
+    -- Inline DOCUMENT images (markdown / html / latex / org): drawn as virtual lines under the source line.
     inline = {
         enabled = true, -- auto-render when a document buffer of a `filetypes` type opens (false = on-demand)
         filetypes = { "markdown", "html", "tex", "latex", "rmd", "quarto", "vimwiki", "org" },

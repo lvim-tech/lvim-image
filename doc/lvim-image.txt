@@ -20,7 +20,7 @@ ImageMagick-CLI fallback) — no PNG copies written to disk. It ships:
 - a standalone floating VIEWER (`:LvimImage`) — a titled surface with the image,
   a toggleable details panel, and a footer bar;
 - INLINE document images (`:LvimImageInline`) — images drawn as virtual lines
-  under their source line in markdown / HTML / LaTeX (via shipped treesitter
+  under their source line in markdown / HTML / LaTeX / org (via shipped treesitter
   queries), never editing the buffer text;
 - an `attach` entry point used by file-buffers and picker previews to render an
   image into any window.
@@ -80,6 +80,28 @@ Lua API: >lua
     image.attach(buf, win, src, opts)  -- render into an existing buffer + window
     image.info()                       -- the detected terminal + capabilities
 <
+                                                    *lvim-image-inline-syntax*
+WHAT COUNTS AS AN INLINE IMAGE. Discovery is per language, through queries the
+plugin ships privately (`lua/lvim-image/queries/<lang>/images.scm`) and reads
+straight off the runtimepath — never registered under a global query name, so
+they cannot merge with or clash against another plugin's `images.scm`.
+
+    markdown   ![alt](path)
+    html       <img src="path">  (open and self-closing)
+    latex      \includegraphics{path}
+    org        [[path]] and [[path][description]] (a `file:` prefix is stripped)
+
+Org is the odd one: its grammar has NO node for a link at all — the brackets
+and the words between them are separate tokens inside one expression — so the
+query captures the expression whole and the target is unwrapped when the path
+is resolved. Links that are not images (`[[https://…]]`, `[[#anchor]]`) fall
+out where every other format's do: the scheme check and the extension test.
+
+A path may be relative to the file, to the project root, or `/`-rooted — which
+is tried both as a real filesystem path and, the common README case, as
+project-root-relative, so `/assets/logo.png` resolves to
+`<root>/assets/logo.png`.
+
 ==============================================================================
 5. CONFIGURATION                                        *lvim-image-configuration*
 

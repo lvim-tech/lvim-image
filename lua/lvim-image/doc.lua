@@ -1,4 +1,4 @@
--- lvim-image.doc: discover image references inside a DOCUMENT buffer (markdown / html / latex, plus
+-- lvim-image.doc: discover image references inside a DOCUMENT buffer (markdown / html / latex / org, plus
 -- any language injected into them) via treesitter, and resolve each to a readable local file. The queries
 -- ship privately with the plugin (`image/queries/<lang>/images.scm`) and are read straight off the runtime
 -- path — NOT registered under a global query name — so they never merge with or clash against another
@@ -89,6 +89,14 @@ end
 ---@return string|nil
 local function resolve(raw, buf)
     local src = vim.trim(raw)
+    -- An ORG link arrives whole: `[[target]]` or `[[target][description]]`. Org's grammar gives a
+    -- link no node of its own — the brackets and the words are separate tokens inside one `expr` —
+    -- so the query can only hand over the whole thing and the TARGET is extracted here, where every
+    -- other format's raw string is normalised too. `file:` is org's own prefix for a plain path.
+    local target = src:match("^%[%[(.-)%]%[") or src:match("^%[%[(.-)%]%]$")
+    if target ~= nil then
+        src = (target:gsub("^file:", ""))
+    end
     src = src:gsub('^"(.*)"$', "%1"):gsub("^'(.*)'$", "%1"):gsub("^<(.*)>$", "%1")
     -- A markdown destination may carry a title: `path "alt"` — keep only the path token.
     src = src:gsub('%s+".*$', ""):gsub("%s+'.*$", "")
