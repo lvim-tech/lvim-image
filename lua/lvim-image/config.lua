@@ -109,6 +109,10 @@ return {
         -- Document filetypes that auto-enable inline rendering (when `enabled`). Markdown/HTML/LaTeX have
         -- shipped treesitter queries; other filetypes only match if a query exists for their language.
         filetypes = { "markdown", "html", "tex", "latex", "rmd", "quarto", "vimwiki", "org" },
+        -- Auto-enable inside FLOATING windows. Off: an LSP hover is a markdown scratch buffer in
+        -- someone else's popup, and enabling there binds `open_key` on it — which is how Enter on a
+        -- hover's link stopped following the link. `:LvimImageInline` still works on demand.
+        floats = false,
         -- Cell box for an inline image: width as a FRACTION of the window (≤ 1) or absolute cells; height
         -- CAPPED (fraction of the window ≤ 1, or absolute cells) so a tall image can't push the whole document.
         max_width = 0.8,

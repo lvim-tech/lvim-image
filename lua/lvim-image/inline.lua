@@ -197,6 +197,27 @@ function M.enable(buf)
     if not config.enabled or not api.nvim_buf_is_valid(buf) or (bufs[buf] and bufs[buf].enabled) then
         return
     end
+    -- A BUFFER THAT LIVES IN A FLOAT belongs to whoever opened it. Neovim's own
+    -- `vim.lsp.util.open_floating_preview` gives its scratch buffer `filetype = markdown`, so the
+    -- auto-enable pattern fires for every LSP hover — and enabling binds `open_key` (<CR> by
+    -- default) buffer-locally, which took the key away from the popup's own action bar: pressing
+    -- Enter on a hover's link moved the cursor instead of following it. Images in a foreign popup
+    -- are not this plugin's business; `:LvimImageInline` is still there for the deliberate case.
+    if not config.inline.floats then
+        local wins = vim.fn.win_findbuf(buf)
+        if #wins > 0 then
+            local only_float = true
+            for _, win in ipairs(wins) do
+                if (api.nvim_win_get_config(win).relative or "") == "" then
+                    only_float = false
+                    break
+                end
+            end
+            if only_float then
+                return
+            end
+        end
+    end
     local st = bufs[buf]
         or {
             ns = api.nvim_create_namespace("lvim-image.inline." .. buf),
