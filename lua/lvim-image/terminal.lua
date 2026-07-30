@@ -403,34 +403,59 @@ function M.setup()
         end,
     })
 
+    -- The terminal probe only makes sense with a UI ATTACHED, and it is gated on that for two reasons: a
+    -- reply can only arrive through the TUI (`TermResponse` is fired by it), and without a UI the tty is
+    -- still in canonical mode, so the terminal's reply is ECHOED back into the process' OUTPUT. In
+    -- `nvim -l script.lua` — script mode, no UI, but a real tty when run from a terminal — that echo is
+    -- visible garbage: a task that runs a Neovim Lua file through lvim-tasks showed
+    -- `^[P>|libvterm(0.3)^[\^[[?61;22;52c` (the XTVERSION + DA1 replies) above its own output, for queries
+    -- whose answers nothing could ever receive. No UI also means nothing renders, so nothing is lost by
+    -- waiting: an RPC/embedded client that attaches LATER gets the probe on its `UIEnter`.
+    ---@param fn fun()
+    local function when_ui(fn)
+        if #api.nvim_list_uis() > 0 then
+            fn()
+            return
+        end
+        api.nvim_create_autocmd("UIEnter", {
+            group = api.nvim_create_augroup("LvimImageTermProbe", { clear = true }),
+            once = true,
+            callback = function()
+                fn()
+            end,
+        })
+    end
+
     -- DEFER the blocking terminal I/O off the startup path: enabling tmux passthrough shells out, and priming
     -- the cell size + firing the capability queries resolve the controlling tty (a process spawn) and write to
     -- it. None is needed until the first image renders, so a `vim.schedule` keeps `setup()` (and the plugin's
     -- measured load time) cheap — env-based caps are already set above, and the queries only refine them.
-    vim.schedule(function()
-        if state.in_tmux then
-            pcall(function()
-                vim.system({ "tmux", "set", "-p", "allow-passthrough", "all" }) -- async: fire and forget
-            end)
-            -- Ask tmux what it is attached to. The query path cannot answer this from inside a pane, so
-            -- this is the only authoritative source of the outer terminal's identity.
-            term_from_tmux(function(name)
-                if name then
-                    -- Recorded even when it AGREES with the env guess: what changes is not the name but
-                    -- its standing. `KITTY_WINDOW_ID` is inherited by any child of a kitty window and is
-                    -- set by other terminals too, so an env guess is never proof; tmux naming its own
-                    -- client is. The capability gate reads the SOURCE, not just the name.
-                    state.term = name
-                    state.term_source = "tmux-client"
-                    recompute_caps()
-                end
-            end)
-        end
-        M.cell_size() -- prime from ioctl (refined by the CSI-14t reply on TermResponse)
-        -- Fire the queries; replies arrive on TermResponse. XTVERSION (name), text-area pixels, DA1 (sixel).
-        query("\27[>q")
-        query("\27[14t")
-        query("\27[c")
+    when_ui(function()
+        vim.schedule(function()
+            if state.in_tmux then
+                pcall(function()
+                    vim.system({ "tmux", "set", "-p", "allow-passthrough", "all" }) -- async: fire and forget
+                end)
+                -- Ask tmux what it is attached to. The query path cannot answer this from inside a pane, so
+                -- this is the only authoritative source of the outer terminal's identity.
+                term_from_tmux(function(name)
+                    if name then
+                        -- Recorded even when it AGREES with the env guess: what changes is not the name but
+                        -- its standing. `KITTY_WINDOW_ID` is inherited by any child of a kitty window and is
+                        -- set by other terminals too, so an env guess is never proof; tmux naming its own
+                        -- client is. The capability gate reads the SOURCE, not just the name.
+                        state.term = name
+                        state.term_source = "tmux-client"
+                        recompute_caps()
+                    end
+                end)
+            end
+            M.cell_size() -- prime from ioctl (refined by the CSI-14t reply on TermResponse)
+            -- Fire the queries; replies arrive on TermResponse. XTVERSION (name), text-area pixels, DA1 (sixel).
+            query("\27[>q")
+            query("\27[14t")
+            query("\27[c")
+        end)
     end)
 end
 
