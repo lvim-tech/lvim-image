@@ -20,7 +20,7 @@ local M = {}
 -- leave them UNMUTED — else a dimmed window (a surface's "dim" backdrop, or dim_inactive) mangles the id in the
 -- fg and the terminal can no longer match the image, so it vanishes. pcall: older lvim-utils has no dim module.
 pcall(function()
-    require("lvim-utils.dim").preserve("^LvimImage_")
+    require("lvim-utils.dim").preserve("^LvimImage_", { data = true }) -- the fg IS the image id, never a colour
 end)
 
 -- Kitty row/column diacritics (gen/rowcolumn-diacritics.txt). Index i (1-based) encodes position i-1.
