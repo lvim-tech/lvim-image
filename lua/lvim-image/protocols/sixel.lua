@@ -74,8 +74,8 @@ end
 
 --- No-op: sixel is encoded at PLACE time (it needs the display pixel size, known only then). Kept for interface
 --- parity with kitty's transmit/place split.
----@param _img table
-function M.transmit(_img) end
+--- Takes the image for interface parity and ignores it.
+function M.transmit(_) end
 
 --- Draw the image at a 1-based screen cell `(row, col)`, sized `cols × rows` cells. Encodes (once per pixel
 --- size, then cached on the image) and writes the sixel at the cell, saving/restoring the cursor around it.
@@ -84,8 +84,9 @@ function M.transmit(_img) end
 ---@param col integer
 ---@param cols integer
 ---@param rows integer
----@param placement_id integer  unused — kept for interface parity
-function M.place_at(img, row, col, cols, rows, placement_id)
+--- The 6th argument (`placement_id`) is ignored — sixel draws into the grid and has no placement to
+--- name; the parameter is kept so every protocol backend shares one `place_at` arity.
+function M.place_at(img, row, col, cols, rows, _)
     local cell = terminal.cell_size()
     local wpx = math.max(1, cols * cell.w)
     local hpx = math.max(1, rows * cell.h)
@@ -114,7 +115,7 @@ function M.place_at(img, row, col, cols, rows, placement_id)
 end
 
 --- No persistent placement to remove (grid-drawn); a repaint of the cells clears the image.
----@param _id integer
-function M.delete(_id) end
+--- Takes the placement id for interface parity and ignores it.
+function M.delete(_) end
 
 return M

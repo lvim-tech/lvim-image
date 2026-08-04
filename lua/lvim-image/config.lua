@@ -26,6 +26,7 @@
 ---@field filetypes string[]  document filetypes that auto-enable inline rendering (when `enabled`)
 ---@field max_width number    inline image cell width: fraction of the window (≤ 1) or absolute cells
 ---@field max_height number   inline image cell-height CAP: fraction of the window (≤ 1) or absolute cells
+---@field floats boolean     auto-enable inside FLOATING windows too (off: a foreign popup's scratch buffer is not this plugin's business)
 ---@field debounce integer    ms after an edit before the placements are reconciled
 ---@field open_key string     buffer-local key (while inline is on) that opens the viewer for the image under the cursor
 

@@ -26,6 +26,7 @@ local function get_query(lang)
         return cached or nil
     end
     local files = api.nvim_get_runtime_file("lua/lvim-image/queries/" .. lang .. "/images.scm", false)
+    ---@type vim.treesitter.Query|false  false = "looked, found nothing" (a negative cache entry)
     local q = false
     if files[1] then
         local fd = io.open(files[1], "r")

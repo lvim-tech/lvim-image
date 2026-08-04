@@ -77,8 +77,9 @@ end
 ---@param col integer
 ---@param cols integer
 ---@param rows integer
----@param placement_id integer  unused (iTerm2 has no placement id) — kept for interface parity
-function M.place_at(img, row, col, cols, rows, placement_id)
+--- The 6th argument (`placement_id`) is ignored — iTerm2 has no placement id; the parameter is kept
+--- so every protocol backend shares one `place_at` arity.
+function M.place_at(img, row, col, cols, rows, _)
     if not img._iterm then
         M.transmit(img)
     end
@@ -97,7 +98,7 @@ function M.place_at(img, row, col, cols, rows, placement_id)
 end
 
 --- No persistent placement to remove (the image is drawn into the grid); a repaint of those cells clears it.
----@param _id integer
-function M.delete(_id) end
+--- Takes the placement id for interface parity and ignores it.
+function M.delete(_) end
 
 return M

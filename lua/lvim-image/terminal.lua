@@ -117,6 +117,15 @@ end
 
 -- ── cell-pixel size (ioctl TIOCGWINSZ, refined by CSI 14 t) ─────────────────
 
+--- The `struct lvim_winsize` declared in the `ffi.cdef` below. The checker cannot read a C
+--- declaration out of a Lua string, so the struct's shape is mirrored here as a class and the
+--- `ffi.new` result is typed with it.
+---@class LvimImageWinsize : ffi.cdata*
+---@field ws_row    integer
+---@field ws_col    integer
+---@field ws_xpixel integer
+---@field ws_ypixel integer
+
 local ffi_ok, ffi = pcall(require, "ffi")
 local ioctl_ready = false
 local function ensure_ioctl()
@@ -157,6 +166,7 @@ local function ioctl_cell()
             return nil, nil
         end
         local ws = ffi.new("struct lvim_winsize")
+        ---@cast ws LvimImageWinsize  cdata for the C struct declared in the cdef above
         local rc = ffi.C.ioctl(fd, TIOCGWINSZ, ws)
         ffi.C.close(fd)
         if rc ~= 0 or ws.ws_col == 0 or ws.ws_row == 0 or ws.ws_xpixel == 0 or ws.ws_ypixel == 0 then

@@ -86,8 +86,8 @@ local function send(cmd)
 end
 
 --- No-op: ueberzugpp reads the image file directly at place time, so there is nothing to pre-transmit.
----@param _img table
-function M.transmit(_img) end
+--- Takes the image for interface parity and ignores it.
+function M.transmit(_) end
 
 --- Add (or REPOSITION — same identifier) the overlay at a 1-based screen cell `(row, col)`, sized `cols × rows`
 --- cells. ueberzugpp coordinates are 0-based, so subtract one.
@@ -96,8 +96,9 @@ function M.transmit(_img) end
 ---@param col integer
 ---@param cols integer
 ---@param rows integer
----@param placement_id integer  unused — kept for interface parity
-function M.place_at(img, row, col, cols, rows, placement_id)
+--- The 6th argument (`placement_id`) is ignored — an overlay is identified by `img.id`; the parameter
+--- is kept so every protocol backend shares one `place_at` arity.
+function M.place_at(img, row, col, cols, rows, _)
     send({
         action = "add",
         identifier = tostring(img.id),
