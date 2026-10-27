@@ -52,6 +52,12 @@ local DIA = {
     0x1D186, 0x1D187, 0x1D188, 0x1D189, 0x1D1AA, 0x1D1AB, 0x1D1AC, 0x1D1AD, 0x1D242, 0x1D243, 0x1D244,
 }
 
+--- The diacritic table, reachable by name for the suite only. It is a transcription of kitty's
+--- rowcolumn-diacritics.txt, where index i encodes position i-1: a duplicate or an out-of-order
+--- entry puts an image cell at the wrong coordinate, silently, and nothing in a rendered grid looks
+--- wrong until the image does. Nothing in the plugin reads it through this name.
+M._diacritics = DIA
+
 local PLACEHOLDER = vim.fn.nr2char(0x10EEEE)
 local ns = api.nvim_create_namespace("lvim-image")
 
