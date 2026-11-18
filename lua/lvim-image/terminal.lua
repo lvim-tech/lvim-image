@@ -319,6 +319,12 @@ local function recompute_caps()
         -- tmux the grid stays OFF until the user turns it on and looks.
         placeholders = placeholders and cfg.tmux_placeholders == true
     end
+    if state.in_zellij then
+        -- zellij answers the terminal query itself (`t == "zellij"`) and runs the kitty protocol on its own
+        -- (the outer kitty only shows what zellij re-emits), so the grid depends on the zellij build, not on
+        -- the outer terminal: 0.46 rejects U=1 placements, a build with zellij#5878 accepts them.
+        placeholders = caps.kitty and cfg.zellij_placeholders == true
+    end
     caps.placeholders = placeholders and proven
     -- iTerm2 inline images
     caps.iterm2 = t == "iterm2" or t == "wezterm" or t == "konsole"

@@ -10,6 +10,7 @@
 ---@field backend "auto"|"kitty"|"iterm2"|"sixel"|"ueberzug"  force a specific protocol, or auto-detect
 ---@field wezterm_placeholders boolean         WezTerm unicode-placeholder support. Default false: no WezTerm build renders the placeholder grid (verified through the 20260716 nightly — it prints U+10EEEE as glyphs while the cursor-positioned popup works). Set true only if a future build adds it.
 ---@field tmux_placeholders boolean            render the kitty placeholder GRID inside tmux. Default false: the outer terminal is now identified correctly through `#{client_termname}`, but whether tmux passes the placeholder cells through intact is unproven — and a multiplexer that does not prints U+10EEEE as literal glyphs across the buffer. Turn it on and look; if the images anchor to their lines, leave it on
+---@field zellij_placeholders boolean          render the kitty placeholder GRID inside zellij. Default false: zellij (0.46) runs the kitty graphics protocol itself and answers U=1 with ENOTSUPPORTED, so the grid shows as blank space. Set true on a zellij build that accepts U=1 placements (zellij-org/zellij#5878)
 ---@field ghostty_placeholders boolean         Ghostty unicode-placeholder support: true (all released builds support it) — an escape hatch, set false only if a build ever misbehaves
 ---@field provide_ui_img boolean               also register lvim-image as `vim.ui.img` (opt-in; the direct API is unaffected)
 ---@field formats string[]                     source extensions the module will attempt to display
@@ -53,6 +54,10 @@ return {
     -- images need it: without the grid an image is drawn at a cursor position and does not travel with
     -- its line, which is why inline rendering is gated on it rather than falling back.
     tmux_placeholders = false,
+    -- zellij re-implements the kitty graphics protocol (it does not pass it through): direct placements
+    -- work, but 0.46 rejects UNICODE PLACEHOLDERS (U=1) with ENOTSUPPORTED, so inline document images get
+    -- their reserved rows and no picture. A build with zellij-org/zellij#5878 accepts them — set true there.
+    zellij_placeholders = false,
     -- Ghostty is kitty-graphics-native and every released build renders unicode placeholders. This is a
     -- plain escape hatch — set false only if a build ever misbehaves, falling back to cursor-positioned.
     ghostty_placeholders = true,

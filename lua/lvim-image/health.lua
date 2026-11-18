@@ -73,13 +73,20 @@ function M.check()
             or "this terminal renders kitty graphics but not the placeholder grid"
         h.info("kitty unicode placeholders: off — " .. why .. "; images render cursor-positioned")
     end
-    -- zellij does not (yet) pass graphics escapes through to the outer terminal, but the outer TERM can leak
-    -- through so a kitty/iTerm2/sixel capability is still claimed. Warn that those escapes will not render.
-    if info.in_zellij and (c.kitty or c.iterm2 or c.sixel) then
-        h.warn(
-            "running inside zellij, which does not pass terminal-graphics escapes through — kitty/iTerm2/sixel "
-                .. "placements will not render; use the ueberzug overlay, or run outside zellij"
-        )
+    -- zellij runs the kitty graphics protocol itself (since 0.46): direct placements — the viewer, an opened
+    -- image — render; iTerm2/sixel escapes do not. Inline document images need unicode placeholders, which a
+    -- stock 0.46 rejects; they follow `zellij_placeholders`.
+    if info.in_zellij then
+        if c.kitty and c.placeholders then
+            h.ok("zellij: kitty images + unicode placeholders (zellij_placeholders = true)")
+        elseif c.kitty then
+            h.info(
+                "zellij: kitty images render; inline document images need unicode placeholders — set "
+                    .. "zellij_placeholders = true on a zellij build that accepts them (zellij-org/zellij#5878)"
+            )
+        elseif c.iterm2 or c.sixel then
+            h.warn("zellij does not pass iTerm2/sixel escapes through — those placements will not render")
+        end
     end
 
     local cfg_backend = image.config.backend
