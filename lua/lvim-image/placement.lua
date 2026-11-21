@@ -94,7 +94,10 @@ local pid_seq = 0
 ---   max_w   max width in cells  (defaults to the window width)
 ---   max_h   max height in cells (defaults to the window height)
 ---@param img lvim-image.Image
----@param opts { buf: integer, win: integer, max_w?: integer, max_h?: integer, center?: boolean, zindex?: integer }
+---   header  lines of text drawn ABOVE the image (a table of facts about the file): the image takes what is left
+---   gutter  lines of text drawn to the LEFT of the image, row by row (the same table, for a wide low area): the
+---           image takes the width that is left
+---@param opts { buf: integer, win: integer, max_w?: integer, max_h?: integer, center?: boolean, zindex?: integer, header?: string[], gutter?: string[] }
 ---@return lvim-image.Placement|nil
 function M.new(img, opts)
     if not (img.w and img.h and img.w > 0 and img.h > 0) then
@@ -103,7 +106,14 @@ function M.new(img, opts)
     local caps = terminal.capabilities()
     local win_w = opts.max_w or api.nvim_win_get_width(opts.win)
     local win_h = opts.max_h or api.nvim_win_get_height(opts.win)
-    local cols, rows = img:cells(win_w, win_h)
+    local header = opts.header or {}
+    local gutter = opts.gutter or {}
+    local gw = 0
+    for _, g in ipairs(gutter) do
+        gw = math.max(gw, vim.fn.strdisplaywidth(g))
+    end
+    gw = gw > 0 and gw + 2 or 0
+    local cols, rows = img:cells(math.max(1, win_w - gw), math.max(1, win_h - #header))
 
     pid_seq = pid_seq + 1
     local self = setmetatable({
@@ -114,6 +124,9 @@ function M.new(img, opts)
         rows = rows,
         pid = pid_seq,
         center = opts.center or false,
+        header = header,
+        gutter = gutter,
+        gutter_w = gw,
         zindex = opts.zindex, -- kitty z-index (>0 = above a backdrop veil); nil = default
         -- Placeholder grid needs BOTH a placeholder-capable terminal AND a placeholder-capable backend (kitty);
         -- every other protocol (iterm2 / sixel / ueberzug) takes the cursor-positioned fallback.
@@ -143,22 +156,34 @@ function Placement:render_placeholder()
     -- spaces before each row so the image sits in the middle of the window; the float viewer is already sized
     -- to the image so it pads nothing.
     local pad_top, pad_left = 0, 0
+    local head = self.header or {}
     if self.center and api.nvim_win_is_valid(self.win) then
-        pad_top = math.max(0, math.floor((api.nvim_win_get_height(self.win) - self.rows) / 2))
+        pad_top = math.max(0, math.floor((api.nvim_win_get_height(self.win) - #head - self.rows) / 2))
         pad_left = math.max(0, math.floor((api.nvim_win_get_width(self.win) - self.cols) / 2))
     end
     local indent = string.rep(" ", pad_left)
 
     local lines = {}
+    for _, h in ipairs(head) do
+        lines[#lines + 1] = h
+    end
     for _ = 1, pad_top do
         lines[#lines + 1] = ""
     end
-    for r = 0, self.rows - 1 do
+    -- the text column to the left of the grid: each row's text, padded to the column's width
+    local gutter, gw = self.gutter or {}, self.gutter_w or 0
+    local prefixes = {}
+    local nrows = math.max(self.rows, #gutter)
+    for r = 0, nrows - 1 do
+        local g = gutter[r + 1] or ""
+        prefixes[r] = g .. string.rep(" ", gw - vim.fn.strdisplaywidth(g))
         local parts = {}
-        for c = 0, self.cols - 1 do
-            parts[#parts + 1] = cell(r, c)
+        if r < self.rows then
+            for c = 0, self.cols - 1 do
+                parts[#parts + 1] = cell(r, c)
+            end
         end
-        lines[#lines + 1] = indent .. table.concat(parts)
+        lines[#lines + 1] = prefixes[r] .. (r < self.rows and indent or "") .. table.concat(parts)
     end
     vim.bo[self.buf].modifiable = true
     api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
@@ -169,8 +194,8 @@ function Placement:render_placeholder()
     local hl = "LvimImage_" .. self.img.id
     api.nvim_set_hl(0, hl, { fg = self.img.id, sp = self.pid, nocombine = true })
     for r = 0, self.rows - 1 do
-        local row = pad_top + r
-        api.nvim_buf_set_extmark(self.buf, ns, row, pad_left, {
+        local row = #head + pad_top + r
+        api.nvim_buf_set_extmark(self.buf, ns, row, #prefixes[r] + pad_left, {
             end_col = #lines[row + 1],
             hl_group = hl,
             priority = 200,
@@ -185,7 +210,7 @@ function Placement:render_fallback()
         return
     end
     local pos = api.nvim_win_get_position(self.win) -- {row, col}, 0-based, editor-relative
-    self.img:place_at(pos[1] + 1, pos[2] + 1, self.cols, self.rows, self.pid)
+    self.img:place_at(pos[1] + 1 + #(self.header or {}), pos[2] + 1, self.cols, self.rows, self.pid)
 end
 
 --- Re-issue the fallback placement (no-op in placeholder mode, which tracks itself).

@@ -103,6 +103,8 @@ function M.attach(buf, win, src, opts)
         max_w = opts.max_width or api.nvim_win_get_width(win),
         max_h = opts.max_height or api.nvim_win_get_height(win),
         center = opts.center ~= false,
+        header = opts.header,
+        gutter = opts.gutter,
     })
 end
 
